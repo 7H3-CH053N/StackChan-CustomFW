@@ -1,0 +1,22 @@
+# Examples only: replace entity IDs with your own.
+
+- alias: StackChan greets you when you arrive
+  triggers:
+    - trigger: state
+      entity_id: person.me
+      to: home
+  actions:
+    - action: rest_command.stackchan_say
+      data:
+        occasion: "Just came home."
+
+- alias: StackChan reminds you of the next calendar event
+  triggers:
+    - trigger: calendar
+      event: start
+      offset: "-00:30:00"
+      entity_id: calendar.personal
+  actions:
+    - action: rest_command.stackchan_say
+      data:
+        occasion: "In 30 minutes: {{ trigger.calendar_event.summary }}"

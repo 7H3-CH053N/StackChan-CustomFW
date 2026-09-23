@@ -1,0 +1,573 @@
+diff --git a/main/CMakeLists.txt b/main/CMakeLists.txt
+index ab6c8a7..4958a88 100644
+--- a/main/CMakeLists.txt
++++ b/main/CMakeLists.txt
+@@ -232,7 +232,7 @@ elseif(CONFIG_BOARD_TYPE_M5STACK_CORE_S3)
+     set(BOARD_DIR "m5stack/core-s3")
+     set(BUILTIN_TEXT_FONT font_noto_sans_basic_20_4)
+     set(BUILTIN_ICON_FONT font_material_symbols_20_4)
+-    set(DEFAULT_EMOJI_COLLECTION noto-color-emoji_64)
++    set(DEFAULT_EMOJI_COLLECTION otto-gif)
+ elseif(CONFIG_BOARD_TYPE_M5STACK_STICK_S3)
+     set(BOARD_DIR "m5stack/stick-s3")
+     set(BUILTIN_TEXT_FONT font_noto_sans_basic_16_4)
+diff --git a/main/application.cc b/main/application.cc
+index 31de205..11421ad 100644
+--- a/main/application.cc
++++ b/main/application.cc
+@@ -672,6 +672,7 @@ void Application::InitializeProtocol() {
+             if (cJSON_IsString(emotion)) {
+                 Schedule([display, emotion_str = std::string(emotion->valuestring)]() {
+                     display->SetEmotion(emotion_str.c_str());
++                    Board::GetInstance().OnEmotion(emotion_str.c_str());
+                 });
+             }
+         } else if (strcmp(type->valuestring, "mcp") == 0) {
+diff --git a/main/boards/common/board.h b/main/boards/common/board.h
+index 19d3f2f..7198201 100644
+--- a/main/boards/common/board.h
++++ b/main/boards/common/board.h
+@@ -82,6 +82,7 @@ public:
+     virtual void SetPowerSaveLevel(PowerSaveLevel level) = 0;
+     virtual std::string GetBoardJson() = 0;
+     virtual std::string GetDeviceStatusJson() = 0;
++    virtual void OnEmotion(const char* emotion) { (void)emotion; }  // vinci: head gestures
+ };
+ 
+ #define DECLARE_BOARD(BOARD_CLASS_NAME) \
+diff --git a/main/boards/common/esp_video.cc b/main/boards/common/esp_video.cc
+index 2f31a49..839a644 100644
+--- a/main/boards/common/esp_video.cc
++++ b/main/boards/common/esp_video.cc
+@@ -411,7 +411,29 @@ void EspVideo::SetExplainUrl(const std::string& url, const std::string& token) {
+     explain_token_ = token;
+ }
+ 
++bool EspVideo::Peek(const std::function<void(const uint8_t*, int, int, uint32_t)>& fn) {
++    std::lock_guard<std::mutex> lock(mu_);
++    if (!streaming_on_ || video_fd_ < 0) {
++        return false;
++    }
++    // Drop the oldest queued frame, it may be seconds old.
++    for (int i = 0; i < 2; i++) {
++        struct v4l2_buffer buf = {};
++        buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
++        buf.memory = V4L2_MEMORY_MMAP;
++        if (ioctl(video_fd_, VIDIOC_DQBUF, &buf) != 0) {
++            return false;
++        }
++        if (i == 1) {
++            fn((const uint8_t*)mmap_buffers_[buf.index].start, frame_.width, frame_.height, sensor_format_);
++        }
++        ioctl(video_fd_, VIDIOC_QBUF, &buf);
++    }
++    return true;
++}
++
+ bool EspVideo::Capture() {
++    std::lock_guard<std::mutex> lock(mu_);
+     if (encoder_thread_.joinable()) {
+         encoder_thread_.join();
+     }
+diff --git a/main/boards/common/esp_video.h b/main/boards/common/esp_video.h
+index f36d26a..4803f8f 100644
+--- a/main/boards/common/esp_video.h
++++ b/main/boards/common/esp_video.h
+@@ -2,7 +2,9 @@
+ #include "sdkconfig.h"
+ 
+ #include <lvgl.h>
++#include <functional>
+ #include <memory>
++#include <mutex>
+ #include <thread>
+ #include <vector>
+ 
+@@ -42,6 +44,7 @@ private:
+     std::string explain_url_;
+     std::string explain_token_;
+     std::thread encoder_thread_;
++    std::mutex mu_;  // vinci: Capture() and Peek() share the V4L2 queue
+ 
+ public:
+     EspVideo(const esp_video_init_config_t& config);
+@@ -49,6 +52,8 @@ public:
+ 
+     virtual void SetExplainUrl(const std::string& url, const std::string& token);
+     virtual bool Capture();
++    // vinci: run fn on a fresh raw frame (sensor format) without copying it.
++    bool Peek(const std::function<void(const uint8_t*, int, int, uint32_t)>& fn);
+     // 翻转控制函数
+     virtual bool SetHMirror(bool enabled) override;
+     virtual bool SetVFlip(bool enabled) override;
+diff --git a/main/boards/m5stack/core-s3/config.json b/main/boards/m5stack/core-s3/config.json
+index 0180483..067f789 100644
+--- a/main/boards/m5stack/core-s3/config.json
++++ b/main/boards/m5stack/core-s3/config.json
+@@ -13,8 +13,11 @@
+                 "CONFIG_SPIRAM_MODE_QUAD=y",
+                 "CONFIG_CAMERA_GC0308=y",
+                 "CONFIG_CAMERA_GC0308_AUTO_DETECT_DVP_INTERFACE_SENSOR=y",
+-                "CONFIG_CAMERA_GC0308_DVP_YUV422_320X240_20FPS=y"
++                "CONFIG_CAMERA_GC0308_DVP_YUV422_320X240_20FPS=y",
++                "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"partitions/v2/16m_vinci.csv\"",
++                "CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y",
++                "CONFIG_ESP_CONSOLE_UART_DEFAULT=n"
+             ]
+         }
+     ]
+-}
++}
+\ No newline at end of file
+diff --git a/main/boards/m5stack/core-s3/face_tracker.h b/main/boards/m5stack/core-s3/face_tracker.h
+new file mode 100755
+index 0000000..7cb3a84
+--- /dev/null
++++ b/main/boards/m5stack/core-s3/face_tracker.h
+@@ -0,0 +1,94 @@
++// vinci: find the nearest face in the camera and hand it to HeadMotion.
++//
++// esp-dl's MSR+MNP face detector (espressif/human_face_detect, model in flash
++// rodata). The camera streams YUV422 320x240; we convert to RGB888 ourselves
++// since that is the detector's well-trodden input.
++//
++// ponytail: fixed ~5 fps, largest box wins. Add identity (face recognition)
++// only if "look at Alex, not at visitors" ever matters.
++#pragma once
++
++#include <esp_heap_caps.h>
++#include <esp_log.h>
++#include <freertos/FreeRTOS.h>
++#include <freertos/task.h>
++
++#include <algorithm>
++
++#include "esp_video.h"
++#include "head_motion.h"
++#include "human_face_detect.hpp"
++
++class FaceTracker {
++public:
++    void Start(EspVideo* cam, HeadMotion* head) {
++        cam_ = cam;
++        head_ = head;
++        xTaskCreatePinnedToCore([](void* p) { static_cast<FaceTracker*>(p)->Loop(); },
++                                "face", 12288, this, 1, nullptr, 1);
++    }
++
++private:
++    static constexpr const char* kTag = "FaceTracker";
++    EspVideo* cam_ = nullptr;
++    HeadMotion* head_ = nullptr;
++    uint8_t* rgb_ = nullptr;
++    int w_ = 0, h_ = 0;
++
++    static uint8_t Clip(int v) { return v < 0 ? 0 : (v > 255 ? 255 : v); }
++
++    // Packed 4:2:2 -> RGB888. y0/y1/u/v are byte offsets inside a 4-byte pair.
++    void Convert(const uint8_t* src, int w, int h, uint32_t fmt) {
++        int y0 = 0, u = 1, y1 = 2, v = 3;                    // YUYV
++        if (fmt == V4L2_PIX_FMT_UYVY) { u = 0; y0 = 1; v = 2; y1 = 3; }
++        uint8_t* d = rgb_;
++        for (int i = 0; i < w * h / 2; i++, src += 4) {
++            int U = src[u] - 128, V = src[v] - 128;
++            int dr = (359 * V) >> 8, dg = (88 * U + 183 * V) >> 8, db = (454 * U) >> 8;
++            for (int Y : {src[y0], src[y1]}) {
++                *d++ = Clip(Y + dr); *d++ = Clip(Y - dg); *d++ = Clip(Y + db);
++            }
++        }
++    }
++
++    void Loop() {
++        vTaskDelay(pdMS_TO_TICKS(5000));  // let audio/network come up first
++        HumanFaceDetect detector;
++        bool warned = false;
++        int64_t last_log = 0;
++        while (true) {
++            vTaskDelay(pdMS_TO_TICKS(150));
++            bool ok = cam_->Peek([&](const uint8_t* p, int w, int h, uint32_t fmt) {
++                if (fmt != V4L2_PIX_FMT_YUYV && fmt != V4L2_PIX_FMT_UYVY &&
++                    fmt != V4L2_PIX_FMT_YUV422P) {
++                    if (!warned) ESP_LOGE(kTag, "unsupported camera format 0x%08lx", fmt);
++                    warned = true;
++                    return;
++                }
++                if (!rgb_) {
++                    rgb_ = (uint8_t*)heap_caps_malloc(w * h * 3, MALLOC_CAP_SPIRAM);
++                    w_ = w; h_ = h;
++                    ESP_LOGI(kTag, "tracking on %dx%d fmt 0x%08lx", w, h, fmt);
++                }
++                if (rgb_ && w == w_ && h == h_) Convert(p, w, h, fmt);
++            });
++            if (!ok || !rgb_ || warned) continue;
++
++            dl::image::img_t img = {rgb_, (uint16_t)w_, (uint16_t)h_, dl::image::DL_IMAGE_PIX_TYPE_RGB888};
++            auto& faces = detector.run(img);
++            if (faces.empty()) continue;
++            auto best = std::max_element(faces.begin(), faces.end(), [](auto& a, auto& b) {
++                return (a.box[2] - a.box[0]) * (a.box[3] - a.box[1]) <
++                       (b.box[2] - b.box[0]) * (b.box[3] - b.box[1]);
++            });
++            float dx = (best->box[0] + best->box[2]) / (float)w_ - 1.0f;
++            float dy = (best->box[1] + best->box[3]) / (float)h_ - 1.0f;
++            head_->SeeFace(dx, dy);
++            int64_t now = esp_timer_get_time() / 1000;
++            if (now - last_log > 2000) {  // enough to calibrate signs, not spam
++                ESP_LOGI(kTag, "face dx=%.2f dy=%.2f score=%.2f", dx, dy, best->score);
++                last_log = now;
++            }
++        }
++    }
++};
+diff --git a/main/boards/m5stack/core-s3/head_motion.h b/main/boards/m5stack/core-s3/head_motion.h
+new file mode 100755
+index 0000000..c091528
+--- /dev/null
++++ b/main/boards/m5stack/core-s3/head_motion.h
+@@ -0,0 +1,254 @@
++// vinci: calm head motion for the StackChan servos.
++//
++// Hardware (from m5stack/StackChan-BSP): two Feetech SCS0009 on UART1, 1 Mbaud,
++// TX GPIO6 / RX GPIO7, ID 1 = yaw, ID 2 = pitch. Servo power (VM EN) is pin 0
++// of the PY32 IO expander at 0x6F. Zero positions live in NVS "servo"
++// (zero_pos_1 / zero_pos_2), written by the stock firmware's calibration.
++//
++// One follower moves the head: a critically damped spring with a speed and an
++// acceleration cap, stepped at 50 Hz. Whoever sets the target (face, gesture,
++// idle), the motion can't come out jerky and never overshoots.
++#pragma once
++
++#include <driver/i2c_master.h>
++#include <driver/uart.h>
++#include <esp_log.h>
++#include <esp_random.h>
++#include <esp_timer.h>
++#include <freertos/FreeRTOS.h>
++#include <freertos/task.h>
++
++#include <algorithm>
++#include <cmath>
++#include <cstring>
++#include <deque>
++#include <mutex>
++#include <string>
++
++#include "application.h"
++#include "settings.h"
++
++class HeadMotion {
++public:
++    // Calibration knobs. Pitch: 0 = level, positive = up (stock limit 0..90).
++    static constexpr float kMaxDegPerSec = 25.0f;   // the "not nervous" knob
++    static constexpr float kMaxDegPerSec2 = 80.0f;  // gentle take-off
++    static constexpr float kOmega = 4.0f;           // settle time ~1.5 s
++    static constexpr float kYawMax = 35.0f, kPitchMax = 20.0f;
++    // Face tracking: flip a sign if the head turns away from you.
++    static constexpr float kTrackSignX = 1.0f, kTrackSignY = 1.0f;
++    static constexpr float kHalfFovX = 25.0f, kHalfFovY = 19.0f, kTrackGain = 0.6f;
++
++    void Start(i2c_master_bus_handle_t bus) {
++        EnableServoPower(bus);
++
++        uart_config_t cfg = {};
++        cfg.baud_rate = 1000000;
++        cfg.data_bits = UART_DATA_8_BITS;
++        cfg.parity = UART_PARITY_DISABLE;
++        cfg.stop_bits = UART_STOP_BITS_1;
++        cfg.flow_ctrl = UART_HW_FLOWCTRL_DISABLE;
++        cfg.source_clk = UART_SCLK_DEFAULT;
++        ESP_ERROR_CHECK(uart_driver_install(UART_NUM_1, 256, 256, 0, nullptr, 0));
++        ESP_ERROR_CHECK(uart_param_config(UART_NUM_1, &cfg));
++        ESP_ERROR_CHECK(uart_set_pin(UART_NUM_1, 6, 7, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
++
++        Settings s("servo", false);
++        zero_[0] = s.GetInt("zero_pos_1", 460);
++        zero_[1] = s.GetInt("zero_pos_2", 620);
++        ESP_LOGI(kTag, "zero yaw=%d pitch=%d", zero_[0], zero_[1]);
++
++        for (uint8_t id = 1; id <= 2; id++) {
++            uint8_t on = 1;
++            Write(id, 40, &on, 1);  // torque enable
++        }
++        // Start pose is unknown, so let the servo glide to centre over 1.5 s.
++        Send(0, 0, 1500);
++        xTaskCreate([](void* p) { static_cast<HeadMotion*>(p)->Loop(); },
++                    "head", 4096, this, 2, nullptr);
++    }
++
++    // Called from Application when the server sends an emotion.
++    void OnEmotion(const std::string& e) {
++        std::lock_guard<std::mutex> lock(mu_);
++        float y = pos_[0];
++        std::deque<Key> g;
++        if (e == "happy" || e == "laughing" || e == "funny" || e == "loving" || e == "kissy") {
++            float p = pos_[1];
++            g = {{y, p + 6, 0}, {y, p, 0}, {y, p + 4, 0}, {y, p, 1500}};  // gentle nod
++        } else if (e == "sad" || e == "crying" || e == "sleepy") {
++            g = {{y * 0.5f, 0, 4000}};                                  // head down
++        } else if (e == "surprised" || e == "shocked") {
++            g = {{y, 14, 2000}};                                       // head up
++        } else if (e == "thinking" || e == "confused") {
++            g = {{y + 14, 12, 3000}};                                  // look aside, up
++        } else if (e == "angry") {
++            g = {{y - 8, 4, 0}, {y + 8, 4, 0}, {y, 4, 1500}};          // slow shake
++        }
++        if (g.empty()) return;
++        gesture_ = std::move(g);
++        arrived_ms_ = -1;
++    }
++
++    // Face centre from the camera, -1..1 in image coords (x right, y down).
++    // The camera sits in the head, so this is an error to correct, not an
++    // absolute position.
++    void SeeFace(float dx, float dy) {
++        std::lock_guard<std::mutex> lock(mu_);
++        // Deadband: small offsets are "looking at you" already; chasing them
++        // is exactly the nervous twitching we don't want.
++        if (std::fabs(dx) > 0.12f) face_[0] = pos_[0] + kTrackSignX * dx * kHalfFovX * kTrackGain;
++        if (std::fabs(dy) > 0.15f) face_[1] = pos_[1] - kTrackSignY * dy * kHalfFovY * kTrackGain;
++        face_ms_ = NowMs();
++    }
++
++private:
++    struct Key { float yaw, pitch; int hold_ms; };
++    static constexpr const char* kTag = "HeadMotion";
++    static constexpr int kTickMs = 20;
++    static constexpr int kFaceMemoryMs = 2500;  // keep looking where you were
++
++    int zero_[2] = {460, 620};
++    float pos_[2] = {0, 0}, vel_[2] = {0, 0}, target_[2] = {0, 0};
++    float face_[2] = {0, 5};
++    int64_t face_ms_ = -100000;
++    std::deque<Key> gesture_;
++    int64_t arrived_ms_ = -1;
++    std::mutex mu_;
++
++    static int64_t NowMs() { return esp_timer_get_time() / 1000; }
++    static float Rand(float lo, float hi) {
++        return lo + (hi - lo) * (esp_random() % 10001) / 10000.0f;
++    }
++
++    // Pose when nobody is in view and no gesture plays. hold = ms until next.
++    Key Idle(DeviceState st) {
++        switch (st) {
++            case kDeviceStateListening: return {0, 6, 3000};  // face forward, still
++            case kDeviceStateSpeaking: return {Rand(-6, 6), Rand(3, 8), (int)Rand(1500, 3000)};
++            default:
++                if (esp_random() % 4 == 0) return {0, 3, (int)Rand(6000, 14000)};
++                return {Rand(-kYawMax, kYawMax) * 0.6f, Rand(0, 8), (int)Rand(5000, 14000)};
++        }
++    }
++
++    bool Arrived() const {
++        return std::fabs(target_[0] - pos_[0]) < 0.5f && std::fabs(target_[1] - pos_[1]) < 0.5f &&
++               std::fabs(vel_[0]) < 2 && std::fabs(vel_[1]) < 2;
++    }
++
++    void Loop() {
++        vTaskDelay(pdMS_TO_TICKS(1600));  // centring glide from Start()
++        DeviceState last = kDeviceStateUnknown;
++        int64_t next_idle = 0;
++        while (true) {
++            int64_t now = NowMs();
++            DeviceState st = Application::GetInstance().GetDeviceState();
++            {
++                std::lock_guard<std::mutex> lock(mu_);
++                if (!gesture_.empty()) {
++                    // Gestures win; step through keys once each is reached and held.
++                    const Key& k = gesture_.front();
++                    target_[0] = k.yaw; target_[1] = k.pitch;
++                    if (Arrived()) {
++                        if (arrived_ms_ < 0) arrived_ms_ = now;
++                        if (now - arrived_ms_ >= k.hold_ms) { gesture_.pop_front(); arrived_ms_ = -1; }
++                    }
++                } else if (now - face_ms_ < kFaceMemoryMs) {
++                    target_[0] = face_[0]; target_[1] = face_[1];
++                    next_idle = now + 3000;  // after losing you, pause before wandering
++                } else if (st != last || now >= next_idle) {
++                    Key k = Idle(st);
++                    target_[0] = k.yaw; target_[1] = k.pitch;
++                    next_idle = now + k.hold_ms;
++                }
++                target_[0] = std::clamp(target_[0], -kYawMax, kYawMax);
++                target_[1] = std::clamp(target_[1], 0.0f, kPitchMax);
++                face_[0] = std::clamp(face_[0], -kYawMax, kYawMax);
++                face_[1] = std::clamp(face_[1], 0.0f, kPitchMax);
++                Step(kTickMs / 1000.0f);
++            }
++            last = st;
++            Send(pos_[0], pos_[1]);
++            vTaskDelay(pdMS_TO_TICKS(kTickMs));
++        }
++    }
++
++    // Critically damped spring, velocity and acceleration capped. Parameters
++    // simulated offline: no overshoot, 20 deg settle in ~1.7 s.
++    void Step(float dt) {
++        for (int i = 0; i < 2; i++) {
++            float a = kOmega * kOmega * (target_[i] - pos_[i]) - 2 * kOmega * vel_[i];
++            a = std::clamp(a, -kMaxDegPerSec2, kMaxDegPerSec2);
++            vel_[i] = std::clamp(vel_[i] + a * dt, -kMaxDegPerSec, kMaxDegPerSec);
++            pos_[i] += vel_[i] * dt;
++        }
++    }
++
++    // 1 raw step = 0.3125 deg (stock: raw = zero + deg*3.2).
++    void Send(float yaw, float pitch, uint16_t time_ms = kTickMs) {
++        int raw[2] = {zero_[0] + (int)std::lround(yaw * 3.2f),
++                      zero_[1] + (int)std::lround(pitch * 3.2f)};
++        if (time_ms == kTickMs && raw[0] == last_raw_[0] && raw[1] == last_raw_[1]) return;
++        last_raw_[0] = raw[0]; last_raw_[1] = raw[1];
++        // SYNC_WRITE goal pos/time/speed (addr 42), both servos in one packet.
++        uint8_t data[14];
++        for (int i = 0; i < 2; i++) {
++            uint16_t pos = std::clamp(raw[i], 0, 1000);
++            uint8_t* d = data + i * 7;
++            d[0] = i + 1;
++            d[1] = pos >> 8; d[2] = pos & 0xff;          // big-endian (SCSCL)
++            d[3] = time_ms >> 8; d[4] = time_ms & 0xff;  // travel time
++            d[5] = 0; d[6] = 0;
++        }
++        uint8_t hdr[2] = {42, 6};
++        Packet(0xFE, 0x83, hdr, 2, data, sizeof(data));
++    }
++    int last_raw_[2] = {-1, -1};
++
++    void Write(uint8_t id, uint8_t addr, const uint8_t* val, uint8_t n) {
++        Packet(id, 0x03, &addr, 1, val, n);
++    }
++
++    // FF FF id len inst params... ~checksum
++    void Packet(uint8_t id, uint8_t inst, const uint8_t* a, int na, const uint8_t* b, int nb) {
++        uint8_t buf[32];
++        int n = 0;
++        buf[n++] = 0xFF; buf[n++] = 0xFF; buf[n++] = id;
++        buf[n++] = na + nb + 2; buf[n++] = inst;
++        memcpy(buf + n, a, na); n += na;
++        memcpy(buf + n, b, nb); n += nb;
++        uint8_t sum = 0;
++        for (int i = 2; i < n; i++) sum += buf[i];
++        buf[n++] = ~sum;
++        uart_write_bytes(UART_NUM_1, buf, n);
++    }
++
++    // PY32 expander pin 0 -> output, pull-up, high. Missing expander is not
++    // fatal: the servos may be powered some other way on this variant.
++    static void EnableServoPower(i2c_master_bus_handle_t bus) {
++        if (i2c_master_probe(bus, 0x6F, 200) != ESP_OK) {
++            ESP_LOGW(kTag, "PY32 expander 0x6F not found, skipping servo power enable");
++            return;
++        }
++        i2c_device_config_t dc = {};
++        dc.dev_addr_length = I2C_ADDR_BIT_LEN_7;
++        dc.device_address = 0x6F;
++        dc.scl_speed_hz = 100000;
++        i2c_master_dev_handle_t dev;
++        if (i2c_master_bus_add_device(bus, &dc, &dev) != ESP_OK) return;
++        auto set_bit = [&](uint8_t reg, bool on) {
++            uint8_t v = 0;
++            i2c_master_transmit_receive(dev, &reg, 1, &v, 1, 100);
++            v = on ? (v | 1) : (v & ~1);
++            uint8_t w[2] = {reg, v};
++            i2c_master_transmit(dev, w, 2, 100);
++        };
++        set_bit(0x03, true);   // mode: output
++        set_bit(0x0B, false);  // no pull-down
++        set_bit(0x09, true);   // pull-up
++        set_bit(0x05, true);   // VM EN high
++        vTaskDelay(pdMS_TO_TICKS(200));
++        ESP_LOGI(kTag, "servo power enabled");
++    }
++};
+diff --git a/main/boards/m5stack/core-s3/m5stack_core_s3.cc b/main/boards/m5stack/core-s3/m5stack_core_s3.cc
+index 83d1259..7dfe133 100644
+--- a/main/boards/m5stack/core-s3/m5stack_core_s3.cc
++++ b/main/boards/m5stack/core-s3/m5stack_core_s3.cc
+@@ -6,6 +6,8 @@
+ #include "power_save_timer.h"
+ #include "i2c_device.h"
+ #include "axp2101.h"
++#include "head_motion.h"
++#include "face_tracker.h"
+ 
+ #include <esp_log.h>
+ #include <driver/i2c_master.h>
+@@ -120,6 +122,8 @@ class M5StackCoreS3Board : public WifiBoard {
+ private:
+     i2c_master_bus_handle_t i2c_bus_;
+     Pmic* pmic_;
++    HeadMotion head_;
++    FaceTracker face_;
+     Aw9523* aw9523_;
+     Ft6336* ft6336_;
+     LcdDisplay* display_;
+@@ -128,7 +132,7 @@ private:
+     PowerSaveTimer* power_save_timer_;
+ 
+     void InitializePowerSaveTimer() {
+-        power_save_timer_ = new PowerSaveTimer(-1, 60, 300);
++        power_save_timer_ = new PowerSaveTimer(-1, -1, -1);  // vinci: never dim, never shut down
+         power_save_timer_->OnEnterSleepMode([this]() {
+             GetDisplay()->SetPowerSaveMode(true);
+             GetBacklight()->SetBrightness(10);
+@@ -341,6 +345,8 @@ public:
+         InitializeCamera();
+         InitializeFt6336TouchPad();
+         GetBacklight()->RestoreBrightness();
++        head_.Start(i2c_bus_);
++        face_.Start(camera_, &head_);
+     }
+ 
+     virtual AudioCodec* GetAudioCodec() override {
+@@ -386,6 +392,8 @@ public:
+         WifiBoard::SetPowerSaveLevel(level);
+     }
+ 
++    virtual void OnEmotion(const char* emotion) override { head_.OnEmotion(emotion); }
++
+     virtual Backlight *GetBacklight() override {
+         static CustomBacklight backlight(pmic_);
+         return &backlight;
+diff --git a/main/display/lcd_display.cc b/main/display/lcd_display.cc
+index 3462ac0..fb7d53d 100644
+--- a/main/display/lcd_display.cc
++++ b/main/display/lcd_display.cc
+@@ -79,7 +79,10 @@ LcdDisplay::LcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_handle_
+ 
+     // Load theme from settings
+     Settings settings("display", false);
+-    std::string theme_name = settings.GetString("theme", "light");
++    // ponytail: pinned to dark because NVS holds "light" from first boot and
++    // there is no way to change it on the device. Restore the settings
++    // lookup once theme switching is reachable.
++    std::string theme_name = "dark";
+     current_theme_ = LvglThemeManager::GetInstance().GetTheme(theme_name);
+ 
+     // Create a timer to hide the preview image
+diff --git a/main/idf_component.yml b/main/idf_component.yml
+index 2473f56..35b81a0 100644
+--- a/main/idf_component.yml
++++ b/main/idf_component.yml
+@@ -1,5 +1,6 @@
+ ## IDF Component Manager Manifest File
+ dependencies:
++  espressif/human_face_detect: "~0.5.0"  # vinci: face tracking
+   waveshare/esp_lcd_sh8601: 1.0.2
+   espressif/esp_lcd_co5300: ^2.1.0
+   espressif/esp_lcd_ili9341: ^2.1.0
+diff --git a/partitions/v2/16m_vinci.csv b/partitions/v2/16m_vinci.csv
+new file mode 100644
+index 0000000..32c1b0b
+--- /dev/null
++++ b/partitions/v2/16m_vinci.csv
+@@ -0,0 +1,10 @@
++# Vinci: mirrors the partition table already on Alex's CoreS3 (read from
++# flash 0x8000), so the table itself never needs reflashing and NVS stays.
++# Name,   Type, SubType, Offset,   Size, Flags
++nvs,      data, nvs,     0x9000,   0x4000,
++otadata,  data, ota,     0xd000,   0x2000,
++phy_init, data, phy,     0xf000,   0x1000,
++ota_0,    app,  ota_0,   0x20000,  0x4F0000,
++ota_1,    app,  ota_1,   0x510000, 0x4F0000,
++assets,   data, spiffs,  0xa00000, 0x400000,
++coredump, data, coredump,0xe00000, 0x10000,

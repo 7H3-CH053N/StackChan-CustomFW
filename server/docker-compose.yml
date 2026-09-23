@@ -1,0 +1,9 @@
+services:
+  stackchan-server:
+    build: .
+    env_file: .env
+    ports:
+      - "12800:12800"
+    volumes:
+      - ./data:/data   # persistent memory (remember/forget tool)
+    restart: unless-stopped

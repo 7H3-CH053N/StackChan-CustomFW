@@ -1,0 +1,4 @@
+firmware/build-work/
+server/.env
+server/data/
+*.bin

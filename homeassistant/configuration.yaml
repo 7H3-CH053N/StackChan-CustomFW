@@ -1,0 +1,7 @@
+# Let Home Assistant make the robot speak on its own.
+# The server phrases the sentence itself; you only pass the occasion.
+rest_command:
+  stackchan_say:
+    url: "http://STACKCHAN_SERVER:12800/vinci/say?occasion={{ occasion | urlencode }}"
+    method: GET
+    timeout: 30
