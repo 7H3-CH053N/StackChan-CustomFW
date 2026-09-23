@@ -12,9 +12,14 @@ FROM golang:1.26-alpine AS builder
 RUN apk add --no-cache git gcc musl-dev opus-dev opusfile-dev pkgconf patch
 
 WORKDIR /src
-ARG UPSTREAM_REF=main
-RUN git clone --depth 1 --branch ${UPSTREAM_REF} \
-    https://github.com/rudyll/stackchan_ha_addons.git .
+# Pinned: upstream main moves, and a silent change there (playback jitter
+# buffer, 2026-09) broke proactive speech on a plain redeploy. Bump
+# deliberately and re-test /vinci/say.
+ARG UPSTREAM_COMMIT=195eed0f41a039762998fc58315efc1077447cb5
+RUN git init -q . && \
+    git remote add origin https://github.com/rudyll/stackchan_ha_addons.git && \
+    git fetch -q --depth 1 origin ${UPSTREAM_COMMIT} && \
+    git checkout -q FETCH_HEAD
 
 # Patch: ota_proxy.go — füge public_ws_url Override ein
 COPY <<'PATCH_EOF' /tmp/ota_proxy.go
@@ -1282,6 +1287,11 @@ func (s *wsSession) speakPCM(pcm []int16) error {
 		s.frameQueue <- f
 	}
 	s.frameQueue <- nil
+	// Upstream's pacingLoop only drains the queue once playback has started
+	// (jitter buffer); the Gemini path sets this in startPlayback.
+	s.mu.Lock()
+	s.playbackStarted = true
+	s.mu.Unlock()
 	return nil
 }
 METHOD_EOF
