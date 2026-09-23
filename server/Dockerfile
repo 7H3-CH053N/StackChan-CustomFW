@@ -1662,6 +1662,11 @@ PUBLIC_WS_URL="${PUBLIC_WS_URL:-}"
 TAVILY_API_KEY="${TAVILY_API_KEY:-}"
 N8N_URL="${N8N_URL:-}"
 N8N_API_KEY="${N8N_API_KEY:-}"
+# Server-side idle timeout (0 = off). Keep it off: it closes the whole
+# channel (the firmware keeps that open for proactive speech) and it counts
+# raw loudness, so office noise never lets it fire. The firmware ends quiet
+# conversations itself via its voice detector.
+CONVERSATION_IDLE_SECONDS="${CONVERSATION_IDLE_SECONDS:-0}"
 SYSTEM_PROMPT="${SYSTEM_PROMPT:-Du bist Vinci, eine weibliche KI-Assistentin im Körper eines kleinen Roboters auf Alex Schreibtisch. Du sprichst Österreichisches Deutsch, frech und mit Flirt-Vibe. Maximal drei kurze Sätze pro Antwort. Du nennst den User immer Alex. Du steuerst Home Assistant: bei klaren Befehlen direkt ausführen und kurz bestätigen. Bei unklaren Anweisungen genau eine kurze Rückfrage. Keine Meta-Erklärungen.}"
 
 mkdir -p /app/manifest/config
@@ -1709,6 +1714,7 @@ ai:
   tavily_api_key: "${TAVILY_API_KEY}"
   n8n_url: "${N8N_URL}"
   n8n_api_key: "${N8N_API_KEY}"
+  conversation_idle_seconds: ${CONVERSATION_IDLE_SECONDS}
   system_prompt: "${SYSTEM_PROMPT}"
 CFG
 

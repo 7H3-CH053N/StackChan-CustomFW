@@ -35,7 +35,7 @@ Custom firmware and a self-hosted voice server for the **M5Stack StackChan** (Co
 | `firmware/xiaozhi-esp32.patch` | All firmware changes against a pinned [xiaozhi-esp32](https://github.com/78/xiaozhi-esp32) commit |
 | `firmware/build.sh` | Clones upstream, applies the patch, drops in the eyes, builds |
 | `firmware/eyes/` | `make_eyes.py` (eye animation generator, Pillow) and the generated GIFs |
-| `server/Dockerfile` | The complete server: clones [rudyll/stackchan_ha_addons](https://github.com/rudyll/stackchan_ha_addons) and applies all server patches inline |
+| `server/Dockerfile` | The complete server: fetches [rudyll/stackchan_ha_addons](https://github.com/rudyll/stackchan_ha_addons) at a pinned commit (`UPSTREAM_COMMIT`) and applies all server patches inline. Bump the pin deliberately and re-test `/vinci/say`: an unpinned upstream change once broke proactive speech on a plain redeploy |
 | `server/docker-compose.yml`, `server/.env.example` | Run it anywhere Docker runs |
 | `homeassistant/` | `rest_command` and example automations for proactive speech |
 
@@ -47,7 +47,7 @@ Custom firmware and a self-hosted voice server for the **M5Stack StackChan** (Co
 | `boards/m5stack/core-s3/face_tracker.h` | **New.** esp-dl face detection (MSR+MNP) on camera frames at ~2.5 fps, feeds the largest face to the head |
 | `boards/m5stack/core-s3/m5stack_core_s3.cc` | Starts head + face tracker, never dims or powers off the display |
 | `boards/common/esp_video.*` | `Peek()` for raw frame access, mutex shared with the photo tool |
-| `boards/common/board.h`, `application.cc` | `OnEmotion()` hook so server emotions reach the board; keeps the server connection open while idle (upstream only connects on wake word, so proactive speech failed with 503 after every boot). Silent retries with backoff up to 10 min |
+| `boards/common/board.h`, `application.cc` | `OnEmotion()` hook so server emotions reach the board; keeps the server connection open while idle (upstream only connects on wake word, so proactive speech failed with 503 after every boot). Silent retries with backoff up to 10 min, 3 s after the server closes the channel. Ends a conversation after 20 s of listening without a reply (neither the server's loudness-based idle timeout nor the device VAD ever saw an office as quiet) |
 | `display/lcd_display.cc` | Dark theme pinned |
 | `main/CMakeLists.txt` | Uses the GIF emoji set (replaced by the cyan eyes) |
 | `idf_component.yml` | Adds `espressif/human_face_detect` |
@@ -83,6 +83,7 @@ docker compose up -d --build
 | `SYSTEM_PROMPT` | no | Personality of the assistant |
 | `GEMINI_MODEL`, `GEMINI_VOICE` | no | Defaults: `gemini-2.5-flash-native-audio-latest`, `Aoede` |
 | `TAVILY_API_KEY`, `N8N_URL`, `N8N_API_KEY` | no | Enable web search and n8n status tools |
+| `CONVERSATION_IDLE_SECONDS` | no | Server-side idle timeout, default `0` (off). Leave it off: it closes the whole channel, which the firmware keeps open for proactive speech; the firmware ends quiet conversations itself |
 
 The server listens on port `12800`.
 
@@ -144,6 +145,8 @@ data:
   occasion: "In 30 minutes: dentist"
 ```
 
+Keep `timeout: 30` in the `rest_command`: the server writes the sentence with Gemini and synthesises it before it answers, which takes longer than Home Assistant's 10 s default. Calendar titles can contain line breaks, so strip them in the template (see `homeassistant/automations.yaml`).
+
 ## Calibration
 
 All knobs are constants at the top of `head_motion.h`:
@@ -176,6 +179,7 @@ Servo zero positions come from NVS `servo/zero_pos_1` and `servo/zero_pos_2`, as
 | Face lost for 4 s | One search pass, near the last position first, then outwards |
 | Search found nobody | Rests, looking where you were last; no searching all night |
 | Wake word or proactive speech | Starts a new search pass if no face is in view |
+| 20 s listening without a reply | Conversation ends, back to wake-word standby (connection stays open) |
 | happy / laughing / loving | Gentle nod |
 | sad / sleepy | Head down |
 | surprised | Head up |

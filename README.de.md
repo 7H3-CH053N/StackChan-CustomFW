@@ -35,7 +35,7 @@ Eigene Firmware und ein selbst gehosteter Sprachserver für den **M5Stack StackC
 | `firmware/xiaozhi-esp32.patch` | Alle Firmware-Änderungen gegen einen festen [xiaozhi-esp32](https://github.com/78/xiaozhi-esp32)-Commit |
 | `firmware/build.sh` | Klont Upstream, wendet den Patch an, legt die Augen ein, baut |
 | `firmware/eyes/` | `make_eyes.py` (Generator für die Augenanimationen, Pillow) und die erzeugten GIFs |
-| `server/Dockerfile` | Der komplette Server: klont [rudyll/stackchan_ha_addons](https://github.com/rudyll/stackchan_ha_addons) und bringt alle Server-Patches inline mit |
+| `server/Dockerfile` | Der komplette Server: holt [rudyll/stackchan_ha_addons](https://github.com/rudyll/stackchan_ha_addons) auf einem festen Commit (`UPSTREAM_COMMIT`) und bringt alle Server-Patches inline mit. Den Pin bewusst anheben und danach `/vinci/say` testen: Eine ungepinnte Upstream-Änderung hat proaktives Sprechen schon einmal bei einem normalen Redeploy kaputt gemacht |
 | `server/docker-compose.yml`, `server/.env.example` | Läuft überall, wo Docker läuft |
 | `homeassistant/` | `rest_command` und Beispiel-Automationen für proaktives Sprechen |
 
@@ -47,7 +47,7 @@ Eigene Firmware und ein selbst gehosteter Sprachserver für den **M5Stack StackC
 | `boards/m5stack/core-s3/face_tracker.h` | **Neu.** esp-dl-Gesichtserkennung (MSR+MNP) auf Kamerabildern mit ~2,5 fps, das größte Gesicht geht an den Kopf |
 | `boards/m5stack/core-s3/m5stack_core_s3.cc` | Startet Kopf und Face-Tracker, Display wird nie gedimmt oder abgeschaltet |
 | `boards/common/esp_video.*` | `Peek()` für Rohbild-Zugriff, Mutex gemeinsam mit dem Foto-Tool |
-| `boards/common/board.h`, `application.cc` | `OnEmotion()`-Hook, damit Server-Emotionen beim Board ankommen; hält die Server-Verbindung im Leerlauf offen (Upstream verbindet nur beim Wake-Word, proaktives Sprechen scheiterte deshalb nach jedem Start mit 503). Stille Wiederholversuche mit Backoff bis 10 min |
+| `boards/common/board.h`, `application.cc` | `OnEmotion()`-Hook, damit Server-Emotionen beim Board ankommen; hält die Server-Verbindung im Leerlauf offen (Upstream verbindet nur beim Wake-Word, proaktives Sprechen scheiterte deshalb nach jedem Start mit 503). Stille Wiederholversuche mit Backoff bis 10 min, 3 s nachdem der Server die Verbindung schließt. Beendet ein Gespräch nach 20 s Zuhören ohne Antwort (weder der lautstärkebasierte Server-Timeout noch die Geräte-VAD haben ein Büro je als still erkannt) |
 | `display/lcd_display.cc` | Dunkles Theme fest eingestellt |
 | `main/CMakeLists.txt` | Nutzt das GIF-Emoji-Set (ersetzt durch die Cyan-Augen) |
 | `idf_component.yml` | Fügt `espressif/human_face_detect` hinzu |
@@ -83,6 +83,7 @@ docker compose up -d --build
 | `SYSTEM_PROMPT` | nein | Persönlichkeit der Assistentin |
 | `GEMINI_MODEL`, `GEMINI_VOICE` | nein | Standard: `gemini-2.5-flash-native-audio-latest`, `Aoede` |
 | `TAVILY_API_KEY`, `N8N_URL`, `N8N_API_KEY` | nein | Aktivieren Websuche und n8n-Status-Tool |
+| `CONVERSATION_IDLE_SECONDS` | nein | Server-Timeout für Leerlauf, Standard `0` (aus). Aus lassen: Er schließt die ganze Verbindung, die die Firmware für proaktives Sprechen offen hält; stille Gespräche beendet die Firmware selbst |
 
 Der Server lauscht auf Port `12800`.
 
@@ -144,6 +145,8 @@ data:
   occasion: "In 30 Minuten: Zahnarzt"
 ```
 
+`timeout: 30` im `rest_command` drin lassen: Der Server formuliert den Satz mit Gemini und synthetisiert ihn, bevor er antwortet, das dauert länger als die 10 s Standard von Home Assistant. Kalendertitel können Zeilenumbrüche enthalten, die im Template entfernen (siehe `homeassistant/automations.yaml`).
+
 ## Kalibrierung
 
 Alle Stellschrauben sind Konstanten oben in `head_motion.h`:
@@ -176,6 +179,7 @@ Die Servo-Nullpositionen kommen aus NVS `servo/zero_pos_1` und `servo/zero_pos_2
 | Gesicht 4 s verloren | Ein Suchdurchgang, zuerst nahe der letzten Position, dann nach außen |
 | Suche erfolglos | Ruht und schaut dorthin, wo du zuletzt warst; kein Suchen die ganze Nacht |
 | Wake-Word oder proaktives Sprechen | Startet einen neuen Suchdurchgang, wenn kein Gesicht im Bild ist |
+| 20 s Zuhören ohne Antwort | Gespräch endet, zurück zum Wake-Word (Verbindung bleibt offen) |
 | happy / laughing / loving | Sanftes Nicken |
 | sad / sleepy | Kopf senken |
 | surprised | Kopf heben |

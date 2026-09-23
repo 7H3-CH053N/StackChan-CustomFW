@@ -19,4 +19,4 @@
   actions:
     - action: rest_command.stackchan_say
       data:
-        occasion: "In 30 minutes: {{ trigger.calendar_event.summary }}"
+        occasion: "In 30 minutes: {{ trigger.calendar_event.summary | replace('\n', ' ') | trim }}"

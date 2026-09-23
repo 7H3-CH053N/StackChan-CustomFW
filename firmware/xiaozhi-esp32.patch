@@ -12,7 +12,7 @@ index ab6c8a7..4958a88 100644
      set(BOARD_DIR "m5stack/stick-s3")
      set(BUILTIN_TEXT_FONT font_noto_sans_basic_16_4)
 diff --git a/main/application.cc b/main/application.cc
-index 31de205..9443358 100644
+index 31de205..5e388bd 100644
 --- a/main/application.cc
 +++ b/main/application.cc
 @@ -187,6 +187,15 @@ void Application::Run() {
@@ -31,7 +31,7 @@ index 31de205..9443358 100644
          if (bits & MAIN_EVENT_ERROR) {
              if (GetDeviceState() == kDeviceStateNotifying) {
                  StopNotification();
-@@ -276,6 +285,20 @@ void Application::Run() {
+@@ -276,6 +285,35 @@ void Application::Run() {
              auto display = Board::GetInstance().GetDisplay();
              display->UpdateStatusBar();
  
@@ -49,10 +49,36 @@ index 31de205..9443358 100644
 +                ESP_LOGI(TAG, "Background connect %s", ok ? "ok" : "failed");
 +            }
 +
++            // vinci: end a conversation when the assistant has not answered for
++            // 20 s of listening. The channel stays open (proactive speech keeps
++            // working); only the mic stops streaming. Neither the server's idle
++            // timeout (raw loudness) nor the device VAD ever saw the office as
++            // quiet, so "no reply" is the signal that holds.
++            if (GetDeviceState() == kDeviceStateListening) {
++                if (++listen_quiet_ >= 20) {
++                    ESP_LOGI(TAG, "No reply for 20 s, leaving listening");
++                    listen_quiet_ = 0;
++                    HandleStopListeningEvent();
++                }
++            } else {
++                listen_quiet_ = 0;
++            }
++
              // Print debug info every 10 seconds
              if (clock_ticks_ % 10 == 0) {
                  SystemInfo::PrintHeapStats();
-@@ -672,6 +695,7 @@ void Application::InitializeProtocol() {
+@@ -573,6 +611,10 @@ void Application::InitializeProtocol() {
+             auto display = Board::GetInstance().GetDisplay();
+             display->SetChatMessage("system", "");
+             SetDeviceState(kDeviceStateIdle);
++            // vinci: the server ends idle conversations by closing the channel;
++            // reconnect quickly so proactive speech has no long blind window.
++            keep_open_next_ = clock_ticks_ + 3;
++            keep_open_backoff_ = 30;
+         });
+     });
+ 
+@@ -672,6 +714,7 @@ void Application::InitializeProtocol() {
              if (cJSON_IsString(emotion)) {
                  Schedule([display, emotion_str = std::string(emotion->valuestring)]() {
                      display->SetEmotion(emotion_str.c_str());
@@ -61,10 +87,10 @@ index 31de205..9443358 100644
              }
          } else if (strcmp(type->valuestring, "mcp") == 0) {
 diff --git a/main/application.h b/main/application.h
-index f2b9a00..60353d7 100644
+index f2b9a00..5a3310b 100644
 --- a/main/application.h
 +++ b/main/application.h
-@@ -152,6 +152,10 @@ private:
+@@ -152,6 +152,11 @@ private:
      bool play_popup_on_listening_ = false;  // Flag to play popup sound after state changes to listening
      bool pending_listening_start_ = false;  // Waiting for playback to drain before starting listening (auto mode)
      int clock_ticks_ = 0;
@@ -72,6 +98,7 @@ index f2b9a00..60353d7 100644
 +    int keep_open_next_ = 0;
 +    int keep_open_backoff_ = 30;
 +    bool background_open_ = false;
++    int listen_quiet_ = 0;  // vinci: seconds in listening without a reply
      TaskHandle_t activation_task_handle_ = nullptr;
  
  
@@ -173,10 +200,10 @@ index 0180483..067f789 100644
 \ No newline at end of file
 diff --git a/main/boards/m5stack/core-s3/face_tracker.h b/main/boards/m5stack/core-s3/face_tracker.h
 new file mode 100755
-index 0000000..111744f
+index 0000000..69c73ff
 --- /dev/null
 +++ b/main/boards/m5stack/core-s3/face_tracker.h
-@@ -0,0 +1,101 @@
+@@ -0,0 +1,105 @@
 +// vinci: find the nearest face in the camera and hand it to HeadMotion.
 +//
 +// esp-dl's MSR+MNP face detector (espressif/human_face_detect, model in flash
@@ -189,6 +216,7 @@ index 0000000..111744f
 +
 +#include <esp_heap_caps.h>
 +#include <esp_log.h>
++#include <esp_system.h>
 +#include <freertos/FreeRTOS.h>
 +#include <freertos/task.h>
 +
@@ -234,6 +262,9 @@ index 0000000..111744f
 +
 +    void Loop() {
 +        vTaskDelay(pdMS_TO_TICKS(5000));  // let audio/network come up first
++        // Logged here, 5 s in, so the USB console has re-attached after a reset.
++        ESP_LOGW(kTag, "last reset reason: %d (1=poweron 3=sw 4=panic 5/6/7=wdt 9=brownout)",
++                 (int)esp_reset_reason());
 +        HumanFaceDetect detector;
 +        // The camera looks up at the user from desk height; at the default
 +        // 0.5 the first stage (MSR) caught ~7% of frames, at 0.25/0.3 ~81%
