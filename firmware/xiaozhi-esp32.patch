@@ -12,10 +12,47 @@ index ab6c8a7..4958a88 100644
      set(BOARD_DIR "m5stack/stick-s3")
      set(BUILTIN_TEXT_FONT font_noto_sans_basic_16_4)
 diff --git a/main/application.cc b/main/application.cc
-index 31de205..11421ad 100644
+index 31de205..9443358 100644
 --- a/main/application.cc
 +++ b/main/application.cc
-@@ -672,6 +672,7 @@ void Application::InitializeProtocol() {
+@@ -187,6 +187,15 @@ void Application::Run() {
+     while (true) {
+         auto bits = xEventGroupWaitBits(event_group_, ALL_EVENTS, pdTRUE, pdFALSE, portMAX_DELAY);
+ 
++        if (bits & MAIN_EVENT_ERROR) {
++            if (background_open_) {
++                // vinci: a failed background reconnect is not the user's problem
++                background_open_ = false;
++                ESP_LOGW(TAG, "Background connect failed: %s", last_error_message_.c_str());
++                bits &= ~MAIN_EVENT_ERROR;
++            }
++        }
++
+         if (bits & MAIN_EVENT_ERROR) {
+             if (GetDeviceState() == kDeviceStateNotifying) {
+                 StopNotification();
+@@ -276,6 +285,20 @@ void Application::Run() {
+             auto display = Board::GetInstance().GetDisplay();
+             display->UpdateStatusBar();
+ 
++            // vinci: keep the server channel open while idle so the server can
++            // speak on its own (HA reminders, greetings). Upstream only opens it
++            // on wake word, so after every boot the robot was unreachable.
++            // Backs off up to 10 min while the server is down.
++            if (clock_ticks_ >= keep_open_next_ && GetDeviceState() == kDeviceStateIdle &&
++                protocol_ && !protocol_->IsAudioChannelOpened()) {
++                background_open_ = true;
++                bool ok = protocol_->OpenAudioChannel();
++                if (ok) background_open_ = false;
++                keep_open_backoff_ = ok ? 30 : std::min(keep_open_backoff_ * 2, 600);
++                keep_open_next_ = clock_ticks_ + keep_open_backoff_;
++                ESP_LOGI(TAG, "Background connect %s", ok ? "ok" : "failed");
++            }
++
+             // Print debug info every 10 seconds
+             if (clock_ticks_ % 10 == 0) {
+                 SystemInfo::PrintHeapStats();
+@@ -672,6 +695,7 @@ void Application::InitializeProtocol() {
              if (cJSON_IsString(emotion)) {
                  Schedule([display, emotion_str = std::string(emotion->valuestring)]() {
                      display->SetEmotion(emotion_str.c_str());
@@ -23,6 +60,21 @@ index 31de205..11421ad 100644
                  });
              }
          } else if (strcmp(type->valuestring, "mcp") == 0) {
+diff --git a/main/application.h b/main/application.h
+index f2b9a00..60353d7 100644
+--- a/main/application.h
++++ b/main/application.h
+@@ -152,6 +152,10 @@ private:
+     bool play_popup_on_listening_ = false;  // Flag to play popup sound after state changes to listening
+     bool pending_listening_start_ = false;  // Waiting for playback to drain before starting listening (auto mode)
+     int clock_ticks_ = 0;
++    // vinci: keep the server channel open while idle (see clock tick)
++    int keep_open_next_ = 0;
++    int keep_open_backoff_ = 30;
++    bool background_open_ = false;
+     TaskHandle_t activation_task_handle_ = nullptr;
+ 
+ 
 diff --git a/main/boards/common/board.h b/main/boards/common/board.h
 index 19d3f2f..7198201 100644
 --- a/main/boards/common/board.h

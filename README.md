@@ -47,7 +47,7 @@ Custom firmware and a self-hosted voice server for the **M5Stack StackChan** (Co
 | `boards/m5stack/core-s3/face_tracker.h` | **New.** esp-dl face detection (MSR+MNP) on camera frames at ~2.5 fps, feeds the largest face to the head |
 | `boards/m5stack/core-s3/m5stack_core_s3.cc` | Starts head + face tracker, never dims or powers off the display |
 | `boards/common/esp_video.*` | `Peek()` for raw frame access, mutex shared with the photo tool |
-| `boards/common/board.h`, `application.cc` | `OnEmotion()` hook so server emotions reach the board |
+| `boards/common/board.h`, `application.cc` | `OnEmotion()` hook so server emotions reach the board; keeps the server connection open while idle (upstream only connects on wake word, so proactive speech failed with 503 after every boot). Silent retries with backoff up to 10 min |
 | `display/lcd_display.cc` | Dark theme pinned |
 | `main/CMakeLists.txt` | Uses the GIF emoji set (replaced by the cyan eyes) |
 | `idf_component.yml` | Adds `espressif/human_face_detect` |

@@ -47,7 +47,7 @@ Eigene Firmware und ein selbst gehosteter Sprachserver für den **M5Stack StackC
 | `boards/m5stack/core-s3/face_tracker.h` | **Neu.** esp-dl-Gesichtserkennung (MSR+MNP) auf Kamerabildern mit ~2,5 fps, das größte Gesicht geht an den Kopf |
 | `boards/m5stack/core-s3/m5stack_core_s3.cc` | Startet Kopf und Face-Tracker, Display wird nie gedimmt oder abgeschaltet |
 | `boards/common/esp_video.*` | `Peek()` für Rohbild-Zugriff, Mutex gemeinsam mit dem Foto-Tool |
-| `boards/common/board.h`, `application.cc` | `OnEmotion()`-Hook, damit Server-Emotionen beim Board ankommen |
+| `boards/common/board.h`, `application.cc` | `OnEmotion()`-Hook, damit Server-Emotionen beim Board ankommen; hält die Server-Verbindung im Leerlauf offen (Upstream verbindet nur beim Wake-Word, proaktives Sprechen scheiterte deshalb nach jedem Start mit 503). Stille Wiederholversuche mit Backoff bis 10 min |
 | `display/lcd_display.cc` | Dunkles Theme fest eingestellt |
 | `main/CMakeLists.txt` | Nutzt das GIF-Emoji-Set (ersetzt durch die Cyan-Augen) |
 | `idf_component.yml` | Fügt `espressif/human_face_detect` hinzu |
