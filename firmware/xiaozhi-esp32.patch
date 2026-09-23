@@ -311,7 +311,7 @@ index 0000000..69c73ff
 +};
 diff --git a/main/boards/m5stack/core-s3/head_motion.h b/main/boards/m5stack/core-s3/head_motion.h
 new file mode 100755
-index 0000000..962be65
+index 0000000..123de20
 --- /dev/null
 +++ b/main/boards/m5stack/core-s3/head_motion.h
 @@ -0,0 +1,283 @@
@@ -501,8 +501,8 @@ index 0000000..962be65
 +                            arrived_ms_ = -1;
 +                            ESP_LOGI(kTag, "search step %d yaw %.0f: nobody", search_step_, pos_[0]);
 +                            if (++search_step_ == kSearchSteps) {
-+                                search_step_ = -1;  // nobody here: rest where they were last
-+                                target_[0] = seen_[0]; target_[1] = seen_[1];
++                                search_step_ = -1;  // nobody found: rest looking straight ahead
++                                target_[0] = 0; target_[1] = 40;
 +                            }
 +                        }
 +                    }
