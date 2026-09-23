@@ -8,7 +8,7 @@ Eigene Firmware und ein selbst gehosteter Sprachserver für den **M5Stack StackC
 - **Einen ruhigeren, lebendigeren Roboter**: animierte cyanfarbene Augen, weiche Kopfbewegungen ohne Ruckeln, Kopfgesten passend zur Stimmung und **Gesichtsverfolgung** über die eingebaute Kamera.
 - **Proaktives Sprechen**: Home Assistant kann den Roboter von sich aus sprechen lassen (Ankunft, Termine, beliebige Anlässe), ohne Wake-Word.
 
-> Status: privates Projekt, läuft auf dem Gerät des Autors. Die Gesichtsverfolgung ist neu und noch experimentell (siehe [Kalibrierung](#kalibrierung)).
+> Status: privates Projekt, läuft auf dem Gerät des Autors, Gesichtsverfolgung inklusive.
 
 ## Zusammenspiel
 
@@ -153,11 +153,17 @@ Alle Stellschrauben sind Konstanten oben in `head_motion.h`:
 | `kMaxDegPerSec` | 25 | Höchstgeschwindigkeit des Kopfes. Kleiner = ruhiger |
 | `kMaxDegPerSec2` | 80 | Beschleunigungsgrenze, hält das Anfahren weich |
 | `kOmega` | 4 | Steifigkeit des Nachführers (20° in ~1,7 s, ohne Überschwingen) |
-| `kYawMax`, `kPitchMax` | 35, 20 | Bewegungsbereich in Grad |
-| `kTrackSignX`, `kTrackSignY` | 1, 1 | Auf `-1` setzen, wenn sich der Kopf von deinem Gesicht **wegdreht** |
+| `kYawMax`, `kPitchMax` | 70, 65 | Bewegungsbereich in Grad (Pitch 0 = tiefste Stellung) |
+| `kTrackSignX`, `kTrackSignY` | -1, 1 | Umdrehen, wenn sich der Kopf von deinem Gesicht **wegdreht** (das Kamerabild des CoreS3 ist gespiegelt) |
+| `kFaceMemoryMs` | 4000 | Wie lange ein verlorenes Gesicht gehalten wird, bevor er sucht |
+| `kSearch[]`, `kSearchDwellMs` | ±20/40/60°, 2000 | Suchpositionen rund um die letzte bekannte Stelle, Standzeit pro Position |
 | `kTrackGain` | 0,6 | Welcher Anteil der Abweichung pro Bild korrigiert wird |
 
-Im seriellen Log steht alle zwei Sekunden `FaceTracker: face dx=.. dy=..`, solange ein Gesicht erkannt wird: wird `|dx|` größer, während sich der Kopf bewegt, stimmt das Vorzeichen nicht.
+Im seriellen Log steht alle fünf Sekunden `FaceTracker: face dx=.. dy=.. yaw=.. pitch=..`, solange ein Gesicht erkannt wird: wird `|dx|` größer, während sich der Kopf bewegt, stimmt das Vorzeichen nicht. Zeilen mit `HeadMotion: search ...` / `found face ...` zeigen die Suche.
+
+Die Ruhe-Neigung (45°) passt für einen Roboter auf dem Schreibtisch, der zu einer sitzenden Person hochschaut. Steht deiner auf Augenhöhe, die Pitch-Werte in `head_motion.h` senken.
+
+Die Erkennungsschwellen sind in `face_tracker.h` auf 0,25 (MSR) / 0,3 (MNP) gesenkt: Beim Blick von Tischhöhe nach oben erkannten die Standardwerte (0,5) nur ~7 % der Bilder, die gesenkten ~81 %, bei Endbewertungen weiterhin um 0,9 bis 1,0.
 
 Die Servo-Nullpositionen kommen aus NVS `servo/zero_pos_1` und `servo/zero_pos_2`, so wie sie die Kalibrierung der Stock-Firmware geschrieben hat.
 
@@ -165,10 +171,11 @@ Die Servo-Nullpositionen kommen aus NVS `servo/zero_pos_1` und `servo/zero_pos_2
 
 | Situation | Kopf |
 |---|---|
+| Nach dem Start | Ein Suchdurchgang nach einem Gesicht (~30 s) |
 | Gesicht im Bild | Folgt deinem Gesicht (Totzone gegen Zucken) |
-| Leerlauf, niemand da | Schaut sich alle 5 bis 14 s langsam um |
-| Zuhören | Schaut nach vorne, Kopf leicht gehoben, ruhig |
-| Sprechen | Leichtes Wandern |
+| Gesicht 4 s verloren | Ein Suchdurchgang, zuerst nahe der letzten Position, dann nach außen |
+| Suche erfolglos | Ruht und schaut dorthin, wo du zuletzt warst; kein Suchen die ganze Nacht |
+| Wake-Word oder proaktives Sprechen | Startet einen neuen Suchdurchgang, wenn kein Gesicht im Bild ist |
 | happy / laughing / loving | Sanftes Nicken |
 | sad / sleepy | Kopf senken |
 | surprised | Kopf heben |

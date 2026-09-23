@@ -8,7 +8,7 @@ Custom firmware and a self-hosted voice server for the **M5Stack StackChan** (Co
 - **A calmer, livelier robot**: animated cyan eyes, soft head motion with no jerky moves, head gestures that follow the mood, and **face tracking** via the built-in camera.
 - **Proactive speech**: Home Assistant can make the robot speak on its own (arrival, calendar, anything), without a wake word.
 
-> Status: personal project, working on the author's device. Face tracking is new and still experimental (see [Calibration](#calibration)).
+> Status: personal project, working on the author's device, face tracking included.
 
 ## How it fits together
 
@@ -153,11 +153,17 @@ All knobs are constants at the top of `head_motion.h`:
 | `kMaxDegPerSec` | 25 | Top head speed. Lower = calmer |
 | `kMaxDegPerSec2` | 80 | Acceleration cap, keeps starts soft |
 | `kOmega` | 4 | Stiffness of the follower (settles 20° in ~1.7 s, no overshoot) |
-| `kYawMax`, `kPitchMax` | 35, 20 | Range of motion in degrees |
-| `kTrackSignX`, `kTrackSignY` | 1, 1 | Flip to `-1` if the head turns **away** from your face |
+| `kYawMax`, `kPitchMax` | 70, 65 | Range of motion in degrees (pitch 0 = lowest position) |
+| `kTrackSignX`, `kTrackSignY` | -1, 1 | Flip if the head turns **away** from your face (the CoreS3 camera image is mirrored) |
+| `kFaceMemoryMs` | 4000 | How long a lost face is held before searching |
+| `kSearch[]`, `kSearchDwellMs` | ±20/40/60°, 2000 | Search poses around the last known position, still time per pose |
 | `kTrackGain` | 0.6 | How much of the offset one frame corrects |
 
-The serial log prints `FaceTracker: face dx=.. dy=..` every two seconds while a face is seen: if `|dx|` grows while the head moves, the sign is wrong.
+The serial log prints `FaceTracker: face dx=.. dy=.. yaw=.. pitch=..` every five seconds while a face is seen: if `|dx|` grows while the head moves, the sign is wrong. `HeadMotion: search ...` / `found face ...` lines show the search.
+
+The resting pitch (45°) suits a robot on the desk looking up at a seated person. If yours sits at eye level, lower the pitch values in `head_motion.h`.
+
+Detector thresholds are lowered to 0.25 (MSR) / 0.3 (MNP) in `face_tracker.h`: looking up from desk height, the defaults (0.5) caught ~7% of frames, the lowered ones ~81%, with final scores still ~0.9 to 1.0.
 
 Servo zero positions come from NVS `servo/zero_pos_1` and `servo/zero_pos_2`, as written by the stock firmware's calibration.
 
@@ -165,10 +171,11 @@ Servo zero positions come from NVS `servo/zero_pos_1` and `servo/zero_pos_2`, as
 
 | Situation | Head |
 |---|---|
+| After boot | One search pass for a face (~30 s) |
 | Face in view | Follows your face (dead zone against twitching) |
-| Idle, nobody there | Looks around slowly every 5 to 14 s |
-| Listening | Faces forward, head slightly raised, still |
-| Speaking | Small drift |
+| Face lost for 4 s | One search pass, near the last position first, then outwards |
+| Search found nobody | Rests, looking where you were last; no searching all night |
+| Wake word or proactive speech | Starts a new search pass if no face is in view |
 | happy / laughing / loving | Gentle nod |
 | sad / sleepy | Head down |
 | surprised | Head up |
