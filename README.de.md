@@ -43,8 +43,8 @@ Eigene Firmware und ein selbst gehosteter Sprachserver für den **M5Stack StackC
 
 | Datei | Änderung |
 |---|---|
-| `boards/m5stack/core-s3/head_motion.h` | **Neu.** Servo-Treiber (UART1, 1 Mbaud, GPIO6/7), Servo-Strom über den PY32-IO-Expander, gedämpfter Bewegungs-Nachführer, Emotions-Gesten, Idle-Verhalten |
-| `boards/m5stack/core-s3/face_tracker.h` | **Neu.** esp-dl-Gesichtserkennung (MSR+MNP) auf Kamerabildern mit ~5 fps, das größte Gesicht geht an den Kopf |
+| `boards/m5stack/core-s3/head_motion.h` | **Neu.** Servo-Treiber (UART1, 1 Mbaud, GPIO6/7), Servo-Strom über den PY32-IO-Expander, gedämpfter Bewegungs-Nachführer, Emotions-Gesten, Gesichtssuche und Ruhe |
+| `boards/m5stack/core-s3/face_tracker.h` | **Neu.** esp-dl-Gesichtserkennung (MSR+MNP) auf Kamerabildern mit ~2,5 fps, das größte Gesicht geht an den Kopf |
 | `boards/m5stack/core-s3/m5stack_core_s3.cc` | Startet Kopf und Face-Tracker, Display wird nie gedimmt oder abgeschaltet |
 | `boards/common/esp_video.*` | `Peek()` für Rohbild-Zugriff, Mutex gemeinsam mit dem Foto-Tool |
 | `boards/common/board.h`, `application.cc` | `OnEmotion()`-Hook, damit Server-Emotionen beim Board ankommen |

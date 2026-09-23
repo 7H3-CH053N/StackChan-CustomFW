@@ -43,8 +43,8 @@ Custom firmware and a self-hosted voice server for the **M5Stack StackChan** (Co
 
 | File | Change |
 |---|---|
-| `boards/m5stack/core-s3/head_motion.h` | **New.** Servo driver (UART1, 1 Mbaud, GPIO6/7), servo power via the PY32 IO expander, damped motion follower, emotion gestures, idle behaviour |
-| `boards/m5stack/core-s3/face_tracker.h` | **New.** esp-dl face detection (MSR+MNP) on camera frames at ~5 fps, feeds the largest face to the head |
+| `boards/m5stack/core-s3/head_motion.h` | **New.** Servo driver (UART1, 1 Mbaud, GPIO6/7), servo power via the PY32 IO expander, damped motion follower, emotion gestures, face search and rest |
+| `boards/m5stack/core-s3/face_tracker.h` | **New.** esp-dl face detection (MSR+MNP) on camera frames at ~2.5 fps, feeds the largest face to the head |
 | `boards/m5stack/core-s3/m5stack_core_s3.cc` | Starts head + face tracker, never dims or powers off the display |
 | `boards/common/esp_video.*` | `Peek()` for raw frame access, mutex shared with the photo tool |
 | `boards/common/board.h`, `application.cc` | `OnEmotion()` hook so server emotions reach the board |
