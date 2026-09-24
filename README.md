@@ -177,7 +177,7 @@ Servo zero positions come from NVS `servo/zero_pos_1` and `servo/zero_pos_2`, as
 | After boot | One search pass for a face (~30 s) |
 | Face in view | Follows your face (dead zone against twitching) |
 | Face lost for 4 s | One search pass, near the last position first, then outwards |
-| Search found nobody | Rests looking straight ahead; no searching all night |
+| Search found nobody | Rests facing where you usually sit (learned); no searching all night |
 | Wake word or proactive speech | Starts a new search pass if no face is in view |
 | 20 s listening without a reply | Conversation ends, back to wake-word standby (connection stays open) |
 | happy / laughing / loving | Gentle nod |

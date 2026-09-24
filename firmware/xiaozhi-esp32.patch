@@ -1,5 +1,5 @@
 diff --git a/main/CMakeLists.txt b/main/CMakeLists.txt
-index ab6c8a7..4958a88 100644
+index ab6c8a7..f1e9139 100644
 --- a/main/CMakeLists.txt
 +++ b/main/CMakeLists.txt
 @@ -232,7 +232,7 @@ elseif(CONFIG_BOARD_TYPE_M5STACK_CORE_S3)
@@ -11,6 +11,14 @@ index ab6c8a7..4958a88 100644
  elseif(CONFIG_BOARD_TYPE_M5STACK_STICK_S3)
      set(BOARD_DIR "m5stack/stick-s3")
      set(BUILTIN_TEXT_FONT font_noto_sans_basic_16_4)
+@@ -1115,6 +1115,7 @@ idf_component_register(SRCS ${SOURCES}
+                         bt
+                         fatfs
+                         xiaozhi-fonts
++                        espcoredump  # vinci: crash reports survive the reboot
+                         ${MAIN_PRIV_REQUIRES_EXTRA}
+                     )
+ 
 diff --git a/main/application.cc b/main/application.cc
 index 31de205..5e388bd 100644
 --- a/main/application.cc
@@ -180,10 +188,10 @@ index f36d26a..4803f8f 100644
      virtual bool SetHMirror(bool enabled) override;
      virtual bool SetVFlip(bool enabled) override;
 diff --git a/main/boards/m5stack/core-s3/config.json b/main/boards/m5stack/core-s3/config.json
-index 0180483..067f789 100644
+index 0180483..99c07c6 100644
 --- a/main/boards/m5stack/core-s3/config.json
 +++ b/main/boards/m5stack/core-s3/config.json
-@@ -13,8 +13,11 @@
+@@ -13,8 +13,13 @@
                  "CONFIG_SPIRAM_MODE_QUAD=y",
                  "CONFIG_CAMERA_GC0308=y",
                  "CONFIG_CAMERA_GC0308_AUTO_DETECT_DVP_INTERFACE_SENSOR=y",
@@ -191,7 +199,9 @@ index 0180483..067f789 100644
 +                "CONFIG_CAMERA_GC0308_DVP_YUV422_320X240_20FPS=y",
 +                "CONFIG_PARTITION_TABLE_CUSTOM_FILENAME=\"partitions/v2/16m_vinci.csv\"",
 +                "CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y",
-+                "CONFIG_ESP_CONSOLE_UART_DEFAULT=n"
++                "CONFIG_ESP_CONSOLE_UART_DEFAULT=n",
++                "CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y",
++                "CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y"
              ]
          }
      ]
@@ -311,10 +321,10 @@ index 0000000..69c73ff
 +};
 diff --git a/main/boards/m5stack/core-s3/head_motion.h b/main/boards/m5stack/core-s3/head_motion.h
 new file mode 100755
-index 0000000..123de20
+index 0000000..f0e6492
 --- /dev/null
 +++ b/main/boards/m5stack/core-s3/head_motion.h
-@@ -0,0 +1,283 @@
+@@ -0,0 +1,288 @@
 +// vinci: calm head motion for the StackChan servos.
 +//
 +// Hardware (from m5stack/StackChan-BSP): two Feetech SCS0009 on UART1, 1 Mbaud,
@@ -423,6 +433,10 @@ index 0000000..123de20
 +        face_ms_ = NowMs();
 +        seen_[0] = pos_[0]; seen_[1] = pos_[1];
 +        seen_ms_ = face_ms_;
++        // Slow average of where faces are seen = where the user usually sits.
++        // ~2.5 detections/s, so 0.01 means roughly a 40 s memory.
++        home_[0] += 0.01f * (pos_[0] - home_[0]);
++        home_[1] += 0.01f * (pos_[1] - home_[1]);
 +    }
 +
 +    float Yaw() const { return pos_[0]; }
@@ -445,6 +459,7 @@ index 0000000..123de20
 +    float face_[2] = {0, 45};
 +    int64_t face_ms_ = -100000;
 +    float seen_[2] = {0, 45};      // pose where a face was last in view
++    float home_[2] = {0, 40};      // learned usual seat of the user
 +    int64_t seen_ms_ = -1000000;
 +    int search_step_ = -1;         // -1: not searching
 +    std::deque<Key> gesture_;
@@ -501,8 +516,8 @@ index 0000000..123de20
 +                            arrived_ms_ = -1;
 +                            ESP_LOGI(kTag, "search step %d yaw %.0f: nobody", search_step_, pos_[0]);
 +                            if (++search_step_ == kSearchSteps) {
-+                                search_step_ = -1;  // nobody found: rest looking straight ahead
-+                                target_[0] = 0; target_[1] = 40;
++                                search_step_ = -1;  // nobody found: rest facing the usual seat
++                                target_[0] = home_[0]; target_[1] = home_[1];
 +                            }
 +                        }
 +                    }

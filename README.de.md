@@ -177,7 +177,7 @@ Die Servo-Nullpositionen kommen aus NVS `servo/zero_pos_1` und `servo/zero_pos_2
 | Nach dem Start | Ein Suchdurchgang nach einem Gesicht (~30 s) |
 | Gesicht im Bild | Folgt deinem Gesicht (Totzone gegen Zucken) |
 | Gesicht 4 s verloren | Ein Suchdurchgang, zuerst nahe der letzten Position, dann nach außen |
-| Suche erfolglos | Ruht und schaut geradeaus; kein Suchen die ganze Nacht |
+| Suche erfolglos | Ruht Richtung deines üblichen Platzes (gelernt); kein Suchen die ganze Nacht |
 | Wake-Word oder proaktives Sprechen | Startet einen neuen Suchdurchgang, wenn kein Gesicht im Bild ist |
 | 20 s Zuhören ohne Antwort | Gespräch endet, zurück zum Wake-Word (Verbindung bleibt offen) |
 | happy / laughing / loving | Sanftes Nicken |
