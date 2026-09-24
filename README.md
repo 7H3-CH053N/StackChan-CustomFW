@@ -25,7 +25,7 @@ Custom firmware and a self-hosted voice server for the **M5Stack StackChan** (Co
 
 1. On boot the robot asks the server's OTA endpoint (`/xiaozhi/ota/`) where to connect and gets the websocket URL.
 2. After the wake word it streams audio to the server; the server talks to Gemini Live and executes Home Assistant actions as tools.
-3. The server sends emotions (`{"type":"llm","emotion":"happy"}`); the firmware shows the matching eye animation and head gesture.
+3. The server picks an emotion for every reply itself: as soon as the live transcript holds the first finished sentence, a quick text call maps it to one of the 21 eye animations (Gemini Live never calls a `set_emotion` tool on its own). The firmware shows the eyes and the matching head gesture.
 4. Home Assistant calls `/vinci/say?occasion=...`; the server writes a short sentence with Gemini, synthesises it and plays it on the robot.
 
 ## Repository layout
@@ -44,13 +44,13 @@ Custom firmware and a self-hosted voice server for the **M5Stack StackChan** (Co
 | File | Change |
 |---|---|
 | `boards/m5stack/core-s3/head_motion.h` | **New.** Servo driver (UART1, 1 Mbaud, GPIO6/7), servo power via the PY32 IO expander, damped motion follower, emotion gestures, face search and rest |
-| `boards/m5stack/core-s3/face_tracker.h` | **New.** esp-dl face detection (MSR+MNP) on camera frames at ~2.5 fps, feeds the largest face to the head |
+| `boards/m5stack/core-s3/face_tracker.h` | **New.** esp-dl face detection (MSR+MNP) on camera frames at ~2.5 fps, feeds the largest face to the head. Pauses for 15 s around every server connect / disconnect: the esp-dl TIE728 kernels crashed (IllegalInstruction) while the channel was connecting, see [esp-dl #237](https://github.com/espressif/esp-dl/issues/237) |
 | `boards/m5stack/core-s3/m5stack_core_s3.cc` | Starts head + face tracker, never dims or powers off the display |
 | `boards/common/esp_video.*` | `Peek()` for raw frame access, mutex shared with the photo tool |
 | `boards/common/board.h`, `application.cc` | `OnEmotion()` hook so server emotions reach the board; keeps the server connection open while idle (upstream only connects on wake word, so proactive speech failed with 503 after every boot). Silent retries with backoff up to 10 min, 3 s after the server closes the channel. Ends a conversation after 20 s of listening without a reply (neither the server's loudness-based idle timeout nor the device VAD ever saw an office as quiet) |
 | `display/lcd_display.cc` | Dark theme pinned |
 | `main/CMakeLists.txt` | Uses the GIF emoji set (replaced by the cyan eyes) |
-| `idf_component.yml` | Adds `espressif/human_face_detect` |
+| `idf_component.yml`, `main/CMakeLists.txt` | Adds `espressif/human_face_detect`; `espcoredump` so crash reports land in the coredump partition (decode with the matching `xiaozhi.elf`) |
 | `partitions/v2/16m_vinci.csv`, `config.json` | Larger app partitions (face model), USB serial console |
 
 ## Setup

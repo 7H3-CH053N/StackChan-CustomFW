@@ -1090,6 +1090,7 @@ import (
 	"io"
 	"math/rand"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -1137,6 +1138,9 @@ func HandleSay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	emo := make(chan string, 1)
+	go func() { emo <- classifyEmotion(text) }()
+
 	pcm, err := geminiTTS(text)
 	if err != nil {
 		w.WriteHeader(http.StatusBadGateway)
@@ -1149,10 +1153,16 @@ func HandleSay(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"error": err.Error()})
 		return
 	}
+	// speakPCM shows "happy" at tts:start; replace it with what fits the words.
+	e := <-emo
+	if e != "" {
+		_ = session.sendJSON(map[string]any{"type": "llm", "emotion": e})
+	}
 
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"status":      "ok",
 		"text":        text,
+		"emotion":     e,
 		"pcm_samples": len(pcm),
 	})
 }
@@ -1162,6 +1172,7 @@ func vinciProactiveHint() string {
 		"Du meldest dich UNGEFRAGT bei Alex, weil gerade etwas passiert ist.\n" +
 		"Sag es in MAXIMAL 2 kurzen Sätzen, gesprochene Sprache, österreichisch gefärbt.\n" +
 		"Sprich Alex direkt an. Kein \"Hallo\", kein \"Ich möchte dich informieren\", kein Vorlesen des Anlasses.\n" +
+		"Uhrzeiten immer als Ziffern sagen (\"um 15 Uhr 15\"), nie \"viertel\", \"halb\" oder \"dreiviertel\".\n" +
 		"Beispiel-Ton: \"Alex, in einer halben Stunde Zahnarzt. Ich würd langsam losfahren.\"\n" +
 		"Antworte NUR mit dem gesprochenen Satz, sonst nichts."
 }
@@ -1184,15 +1195,47 @@ func idleMood() string {
 	var pool []string
 	switch h := time.Now().In(loc).Hour(); {
 	case h >= 6 && h < 10:
-		pool = []string{"happy", "confident", "neutral"}
+		pool = []string{"confident", "neutral", "relaxed"}
 	case h >= 10 && h < 17:
 		pool = []string{"neutral", "thinking", "confident", "cool", "neutral"}
 	case h >= 17 && h < 21:
-		pool = []string{"relaxed", "happy", "neutral"}
+		pool = []string{"relaxed", "cool", "neutral"}
 	default:
 		pool = []string{"sleepy", "relaxed", "sleepy"}
 	}
 	return pool[rand.Intn(len(pool))]
+}
+
+// vinciEmotions are the eye animations the firmware ships (make_eyes.py).
+var vinciEmotions = []string{"neutral", "happy", "laughing", "funny", "silly", "sad",
+	"crying", "angry", "surprised", "shocked", "thinking", "sleepy", "kissy", "loving",
+	"winking", "confident", "cool", "embarrassed", "confused", "relaxed", "delicious"}
+
+// classifyEmotion maps what Vinci says to one of the eye animations. Gemini
+// Live never calls set_emotion on its own, so the server decides instead:
+// one cheap text call per reply. "" means no confident answer.
+func classifyEmotion(said string) string {
+	out, err := geminiCompose("Welche Emotion passt zu diesem gesprochenen Satz einer frechen, charmanten Assistentin? "+
+		"Antworte mit GENAU einem Wort aus dieser Liste, sonst nichts: "+strings.Join(vinciEmotions, ", ")+
+		". Sachliche Auskunft ohne Gefühl: neutral.", "SATZ: "+said)
+	if err != nil {
+		return ""
+	}
+	out = strings.ToLower(strings.Trim(strings.TrimSpace(out), ".!\"'"))
+	for _, e := range vinciEmotions {
+		if out == e {
+			return e
+		}
+	}
+	return ""
+}
+
+// vinciEmoteDue is true once per reply: when the live transcript first holds
+// a finished sentence (or 60 characters), early enough to change the eyes
+// while she is still talking.
+func vinciEmoteDue(before, after string) bool {
+	done := func(t string) bool { return strings.ContainsAny(t, ".!?") || len(t) >= 60 }
+	return !done(before) && done(after)
 }
 PROACT_GO_EOF
 RUN sed -i 's/\r$//' /tmp/vinci_proactive.go && \
@@ -1356,13 +1399,19 @@ diff --git a/stackchan-server/server/internal/service/ai/provider.go b/stackchan
 diff --git a/stackchan-server/server/internal/service/ai/ws_simulator.go b/stackchan-server/server/internal/service/ai/ws_simulator.go
 --- a/stackchan-server/server/internal/service/ai/ws_simulator.go
 +++ b/stackchan-server/server/internal/service/ai/ws_simulator.go
-@@ -123,6 +123,11 @@ func HandleWS(w http.ResponseWriter, r *http.Request) {
+@@ -123,6 +123,17 @@ func HandleWS(w http.ResponseWriter, r *http.Request) {
  			g.Log().Infof(ctx, "[WS] device=%s LLM: %q", deviceID, text)
  		},
 
 +		OnEmotion: func(emotion string) {
-+			g.Log().Infof(ctx, "[WS] device=%s emotion -> %s", deviceID, emotion)
-+			_ = s.sendJSON(map[string]any{"type": "llm", "emotion": emotion})
++			go func() {
++				// startPlayback sends "neutral" with tts:start; land after it.
++				for i := 0; i < 40 && !s.isPlaybackStarted(); i++ {
++					time.Sleep(50 * time.Millisecond)
++				}
++				g.Log().Infof(ctx, "[WS] device=%s emotion -> %s", deviceID, emotion)
++				_ = s.sendJSON(map[string]any{"type": "llm", "emotion": emotion})
++			}()
 +		},
 +
  		OnAudio: func(pcm []int16) { // encode and enqueue; pacingLoop sends at 60ms
@@ -1371,6 +1420,13 @@ diff --git a/stackchan-server/server/internal/service/ai/ws_simulator.go b/stack
 EMO_PATCH_EOF
 RUN sed -i 's/\r$//' /tmp/vinci-emotion.patch && \
     cd /src && patch -p1 < /tmp/vinci-emotion.patch
+
+# Classify the first finished sentence of every live reply (see vinciEmoteDue).
+RUN GMC=/src/stackchan-server/server/internal/service/ai/gemini_client.go && \
+    awk 'BEGIN{t="\t"} \
+         /s\.outputTranscript\.WriteString\(text\)/ && !done {print t t t "before := s.outputTranscript.String()"; print; print t t t "if cb := s.cb.OnEmotion; cb != nil && vinciEmoteDue(before, s.outputTranscript.String()) {"; print t t t t "go func(said string) {"; print t t t t t "if e := classifyEmotion(said); e != \"\" {"; print t t t t t t "cb(e)"; print t t t t t "}"; print t t t t "}(s.outputTranscript.String())"; print t t t "}"; done=1; next} \
+         {print}' "$GMC" > "$GMC.new" && mv "$GMC.new" "$GMC" && \
+    grep -q 'vinciEmoteDue' "$GMC"
 
 # Vinci entity-index: builds a compact per-area listing of all useful HA
 # entities (id + friendly name + aliases) and appends it to the system prompt

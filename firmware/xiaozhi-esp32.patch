@@ -20,7 +20,7 @@ index ab6c8a7..f1e9139 100644
                      )
  
 diff --git a/main/application.cc b/main/application.cc
-index 31de205..5e388bd 100644
+index 31de205..368d117 100644
 --- a/main/application.cc
 +++ b/main/application.cc
 @@ -187,6 +187,15 @@ void Application::Run() {
@@ -50,7 +50,7 @@ index 31de205..5e388bd 100644
 +            if (clock_ticks_ >= keep_open_next_ && GetDeviceState() == kDeviceStateIdle &&
 +                protocol_ && !protocol_->IsAudioChannelOpened()) {
 +                background_open_ = true;
-+                bool ok = protocol_->OpenAudioChannel();
++                bool ok = (Board::GetInstance().PauseVision(15000), protocol_->OpenAudioChannel());
 +                if (ok) background_open_ = false;
 +                keep_open_backoff_ = ok ? 30 : std::min(keep_open_backoff_ * 2, 600);
 +                keep_open_next_ = clock_ticks_ + keep_open_backoff_;
@@ -75,7 +75,13 @@ index 31de205..5e388bd 100644
              // Print debug info every 10 seconds
              if (clock_ticks_ % 10 == 0) {
                  SystemInfo::PrintHeapStats();
-@@ -573,6 +611,10 @@ void Application::InitializeProtocol() {
+@@ -568,11 +606,16 @@ void Application::InitializeProtocol() {
+     });
+ 
+     protocol_->OnAudioChannelClosed([this, &board]() {
++        board.PauseVision(15000);  // vinci: see face_tracker.h Pause()
+         board.SetPowerSaveLevel(PowerSaveLevel::LOW_POWER);
+         Schedule([this]() {
              auto display = Board::GetInstance().GetDisplay();
              display->SetChatMessage("system", "");
              SetDeviceState(kDeviceStateIdle);
@@ -86,7 +92,7 @@ index 31de205..5e388bd 100644
          });
      });
  
-@@ -672,6 +714,7 @@ void Application::InitializeProtocol() {
+@@ -672,6 +715,7 @@ void Application::InitializeProtocol() {
              if (cJSON_IsString(emotion)) {
                  Schedule([display, emotion_str = std::string(emotion->valuestring)]() {
                      display->SetEmotion(emotion_str.c_str());
@@ -94,6 +100,24 @@ index 31de205..5e388bd 100644
                  });
              }
          } else if (strcmp(type->valuestring, "mcp") == 0) {
+@@ -830,7 +874,7 @@ void Application::ContinueOpenAudioChannel(ListeningMode mode) {
+     board.SetPowerSaveLevel(PowerSaveLevel::PERFORMANCE);
+ 
+     if (!protocol_->IsAudioChannelOpened()) {
+-        if (!protocol_->OpenAudioChannel()) {
++        if (!(Board::GetInstance().PauseVision(15000), protocol_->OpenAudioChannel())) {
+             // Return to idle so the device is not stuck in the connecting
+             // state (not every failure path reports a network error)
+             SetDeviceState(kDeviceStateIdle);
+@@ -966,7 +1010,7 @@ void Application::ContinueWakeWordInvoke(const std::string& wake_word) {
+     board.SetPowerSaveLevel(PowerSaveLevel::PERFORMANCE);
+ 
+     if (!protocol_->IsAudioChannelOpened()) {
+-        if (!protocol_->OpenAudioChannel()) {
++        if (!(Board::GetInstance().PauseVision(15000), protocol_->OpenAudioChannel())) {
+             // Return to idle so the device is not stuck in the connecting
+             // state (not every failure path reports a network error), and
+             // wake word detection is re-enabled by the idle state handler.
 diff --git a/main/application.h b/main/application.h
 index f2b9a00..5a3310b 100644
 --- a/main/application.h
@@ -111,14 +135,15 @@ index f2b9a00..5a3310b 100644
  
  
 diff --git a/main/boards/common/board.h b/main/boards/common/board.h
-index 19d3f2f..7198201 100644
+index 19d3f2f..40a1953 100644
 --- a/main/boards/common/board.h
 +++ b/main/boards/common/board.h
-@@ -82,6 +82,7 @@ public:
+@@ -82,6 +82,8 @@ public:
      virtual void SetPowerSaveLevel(PowerSaveLevel level) = 0;
      virtual std::string GetBoardJson() = 0;
      virtual std::string GetDeviceStatusJson() = 0;
 +    virtual void OnEmotion(const char* emotion) { (void)emotion; }  // vinci: head gestures
++    virtual void PauseVision(int ms) { (void)ms; }  // vinci: see application.cc
  };
  
  #define DECLARE_BOARD(BOARD_CLASS_NAME) \
@@ -210,10 +235,10 @@ index 0180483..99c07c6 100644
 \ No newline at end of file
 diff --git a/main/boards/m5stack/core-s3/face_tracker.h b/main/boards/m5stack/core-s3/face_tracker.h
 new file mode 100755
-index 0000000..69c73ff
+index 0000000..db3a8f3
 --- /dev/null
 +++ b/main/boards/m5stack/core-s3/face_tracker.h
-@@ -0,0 +1,105 @@
+@@ -0,0 +1,122 @@
 +// vinci: find the nearest face in the camera and hand it to HeadMotion.
 +//
 +// esp-dl's MSR+MNP face detector (espressif/human_face_detect, model in flash
@@ -231,6 +256,7 @@ index 0000000..69c73ff
 +#include <freertos/task.h>
 +
 +#include <algorithm>
++#include <atomic>
 +
 +#include "esp_video.h"
 +#include "head_motion.h"
@@ -247,12 +273,19 @@ index 0000000..69c73ff
 +        }
 +    }
 +
++    // The esp-dl TIE728 kernels crashed (IllegalInstruction, Core 1) while the
++    // server channel was connecting; the crash rate tracked the reconnect
++    // rate. Unexplained upstream (esp-dl #237), so detection simply sits out
++    // every connect / disconnect.
++    void Pause(int ms) { pause_until_ = esp_timer_get_time() / 1000 + ms; }
++
 +private:
 +    static constexpr const char* kTag = "FaceTracker";
 +    EspVideo* cam_ = nullptr;
 +    HeadMotion* head_ = nullptr;
 +    uint8_t* rgb_ = nullptr;
 +    int w_ = 0, h_ = 0;
++    std::atomic<int64_t> pause_until_{0};
 +
 +    static uint8_t Clip(int v) { return v < 0 ? 0 : (v > 255 ? 255 : v); }
 +
@@ -283,8 +316,13 @@ index 0000000..69c73ff
 +        detector.set_score_thr(0.3f, 1);
 +        bool warned = false;
 +        int64_t last_log = 0;
++        int64_t last_rr_log = 0;
 +        while (true) {
 +            vTaskDelay(pdMS_TO_TICKS(150));
++            if (esp_timer_get_time() / 1000 < pause_until_) {
++                head_->KeepGaze();  // hold the current look instead of searching
++                continue;
++            }
 +            bool ok = cam_->Peek([&](const uint8_t* p, int w, int h, uint32_t fmt) {
 +                if (fmt != V4L2_PIX_FMT_YUYV && fmt != V4L2_PIX_FMT_UYVY &&
 +                    fmt != V4L2_PIX_FMT_YUV422P) {
@@ -312,6 +350,10 @@ index 0000000..69c73ff
 +            float dy = (best->box[1] + best->box[3]) / (float)h_ - 1.0f;
 +            head_->SeeFace(dx, dy);
 +            int64_t now = esp_timer_get_time() / 1000;
++            if (now - last_rr_log > 30000) {  // repeat: a late-attaching console still sees it
++                ESP_LOGW(kTag, "last reset reason: %d, up %lld s", (int)esp_reset_reason(), now / 1000);
++                last_rr_log = now;
++            }
 +            if (now - last_log > 5000) {  // enough to calibrate signs, not spam
 +                ESP_LOGI(kTag, "face dx=%.2f dy=%.2f score=%.2f yaw=%.1f pitch=%.1f", dx, dy, best->score, head_->Yaw(), head_->Pitch());
 +                last_log = now;
@@ -321,10 +363,10 @@ index 0000000..69c73ff
 +};
 diff --git a/main/boards/m5stack/core-s3/head_motion.h b/main/boards/m5stack/core-s3/head_motion.h
 new file mode 100755
-index 0000000..f0e6492
+index 0000000..d9a8ad6
 --- /dev/null
 +++ b/main/boards/m5stack/core-s3/head_motion.h
-@@ -0,0 +1,288 @@
+@@ -0,0 +1,294 @@
 +// vinci: calm head motion for the StackChan servos.
 +//
 +// Hardware (from m5stack/StackChan-BSP): two Feetech SCS0009 on UART1, 1 Mbaud,
@@ -437,6 +479,12 @@ index 0000000..f0e6492
 +        // ~2.5 detections/s, so 0.01 means roughly a 40 s memory.
 +        home_[0] += 0.01f * (pos_[0] - home_[0]);
 +        home_[1] += 0.01f * (pos_[1] - home_[1]);
++    }
++
++    // While detection is paused: if a face is being tracked, keep it "seen".
++    void KeepGaze() {
++        std::lock_guard<std::mutex> lock(mu_);
++        if (NowMs() - face_ms_ < kFaceMemoryMs) face_ms_ = NowMs();
 +    }
 +
 +    float Yaw() const { return pos_[0]; }
@@ -614,7 +662,7 @@ index 0000000..f0e6492
 +    }
 +};
 diff --git a/main/boards/m5stack/core-s3/m5stack_core_s3.cc b/main/boards/m5stack/core-s3/m5stack_core_s3.cc
-index 83d1259..7dfe133 100644
+index 83d1259..997106a 100644
 --- a/main/boards/m5stack/core-s3/m5stack_core_s3.cc
 +++ b/main/boards/m5stack/core-s3/m5stack_core_s3.cc
 @@ -6,6 +6,8 @@
@@ -653,11 +701,12 @@ index 83d1259..7dfe133 100644
      }
  
      virtual AudioCodec* GetAudioCodec() override {
-@@ -386,6 +392,8 @@ public:
+@@ -386,6 +392,9 @@ public:
          WifiBoard::SetPowerSaveLevel(level);
      }
  
 +    virtual void OnEmotion(const char* emotion) override { head_.OnEmotion(emotion); }
++    virtual void PauseVision(int ms) override { face_.Pause(ms); }
 +
      virtual Backlight *GetBacklight() override {
          static CustomBacklight backlight(pmic_);

@@ -25,7 +25,7 @@ Eigene Firmware und ein selbst gehosteter Sprachserver für den **M5Stack StackC
 
 1. Beim Start fragt der Roboter den OTA-Endpunkt des Servers (`/xiaozhi/ota/`), wohin er sich verbinden soll, und bekommt die WebSocket-URL.
 2. Nach dem Wake-Word streamt er Audio zum Server; der Server spricht mit Gemini Live und führt Home-Assistant-Aktionen als Tools aus.
-3. Der Server schickt Emotionen (`{"type":"llm","emotion":"happy"}`); die Firmware zeigt die passende Augenanimation und Kopfgeste.
+3. Der Server wählt die Emotion jeder Antwort selbst: Sobald die Live-Textfassung den ersten fertigen Satz enthält, ordnet ein schneller Textaufruf ihn einer der 21 Augenanimationen zu (Gemini Live ruft ein `set_emotion`-Werkzeug nie von sich aus auf). Die Firmware zeigt die Augen und die passende Kopfgeste.
 4. Home Assistant ruft `/vinci/say?occasion=...` auf; der Server formuliert mit Gemini einen kurzen Satz, synthetisiert ihn und spielt ihn am Roboter ab.
 
 ## Aufbau des Repos
@@ -44,13 +44,13 @@ Eigene Firmware und ein selbst gehosteter Sprachserver für den **M5Stack StackC
 | Datei | Änderung |
 |---|---|
 | `boards/m5stack/core-s3/head_motion.h` | **Neu.** Servo-Treiber (UART1, 1 Mbaud, GPIO6/7), Servo-Strom über den PY32-IO-Expander, gedämpfter Bewegungs-Nachführer, Emotions-Gesten, Gesichtssuche und Ruhe |
-| `boards/m5stack/core-s3/face_tracker.h` | **Neu.** esp-dl-Gesichtserkennung (MSR+MNP) auf Kamerabildern mit ~2,5 fps, das größte Gesicht geht an den Kopf |
+| `boards/m5stack/core-s3/face_tracker.h` | **Neu.** esp-dl-Gesichtserkennung (MSR+MNP) auf Kamerabildern mit ~2,5 fps, das größte Gesicht geht an den Kopf. Pausiert 15 s rund um jeden Verbindungsauf- und -abbau zum Server: Die esp-dl-TIE728-Kernel stürzten (IllegalInstruction) während des Verbindungsaufbaus ab, siehe [esp-dl #237](https://github.com/espressif/esp-dl/issues/237) |
 | `boards/m5stack/core-s3/m5stack_core_s3.cc` | Startet Kopf und Face-Tracker, Display wird nie gedimmt oder abgeschaltet |
 | `boards/common/esp_video.*` | `Peek()` für Rohbild-Zugriff, Mutex gemeinsam mit dem Foto-Tool |
 | `boards/common/board.h`, `application.cc` | `OnEmotion()`-Hook, damit Server-Emotionen beim Board ankommen; hält die Server-Verbindung im Leerlauf offen (Upstream verbindet nur beim Wake-Word, proaktives Sprechen scheiterte deshalb nach jedem Start mit 503). Stille Wiederholversuche mit Backoff bis 10 min, 3 s nachdem der Server die Verbindung schließt. Beendet ein Gespräch nach 20 s Zuhören ohne Antwort (weder der lautstärkebasierte Server-Timeout noch die Geräte-VAD haben ein Büro je als still erkannt) |
 | `display/lcd_display.cc` | Dunkles Theme fest eingestellt |
 | `main/CMakeLists.txt` | Nutzt das GIF-Emoji-Set (ersetzt durch die Cyan-Augen) |
-| `idf_component.yml` | Fügt `espressif/human_face_detect` hinzu |
+| `idf_component.yml`, `main/CMakeLists.txt` | Fügt `espressif/human_face_detect` hinzu; `espcoredump`, damit Absturzberichte in der Coredump-Partition landen (auswerten mit der passenden `xiaozhi.elf`) |
 | `partitions/v2/16m_vinci.csv`, `config.json` | Größere App-Partitionen (Gesichtsmodell), USB-Serial-Konsole |
 
 ## Einrichtung
