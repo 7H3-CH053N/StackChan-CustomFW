@@ -47,11 +47,12 @@ Eigene Firmware und ein selbst gehosteter Sprachserver für den **M5Stack StackC
 | `boards/m5stack/core-s3/face_tracker.h` | **Neu.** esp-dl-Gesichtserkennung (MSR+MNP) auf Kamerabildern mit ~2,5 fps, das größte Gesicht geht an den Kopf. Pausiert 15 s rund um jeden Verbindungsauf- und -abbau zum Server: Die esp-dl-TIE728-Kernel stürzten (IllegalInstruction) während des Verbindungsaufbaus ab, siehe [esp-dl #237](https://github.com/espressif/esp-dl/issues/237) |
 | `boards/m5stack/core-s3/m5stack_core_s3.cc` | Startet Kopf und Face-Tracker, Display wird nie gedimmt oder abgeschaltet |
 | `boards/common/esp_video.*` | `Peek()` für Rohbild-Zugriff, Mutex gemeinsam mit dem Foto-Tool |
-| `boards/common/board.h`, `application.cc` | `OnEmotion()`-Hook, damit Server-Emotionen beim Board ankommen; hält die Server-Verbindung im Leerlauf offen (Upstream verbindet nur beim Wake-Word, proaktives Sprechen scheiterte deshalb nach jedem Start mit 503). Stille Wiederholversuche mit Backoff bis 10 min, 3 s nachdem der Server die Verbindung schließt. Beendet ein Gespräch nach 20 s Zuhören ohne Antwort (weder der lautstärkebasierte Server-Timeout noch die Geräte-VAD haben ein Büro je als still erkannt) |
-| `display/lcd_display.cc` | Dunkles Theme fest eingestellt |
+| `boards/common/board.h`, `application.cc` | `OnEmotion()`-Hook, damit Server-Emotionen beim Board ankommen; hält die Server-Verbindung im Leerlauf offen (Upstream verbindet nur beim Wake-Word, proaktives Sprechen scheiterte deshalb nach jedem Start mit 503). Stille Wiederholversuche mit Backoff bis 10 min, 3 s nachdem der Server die Verbindung schließt. Beendet ein Gespräch nach 20 s Zuhören ohne Antwort (weder der lautstärkebasierte Server-Timeout noch die Geräte-VAD haben ein Büro je als still erkannt). Löscht eine alte Fehleranzeige, sobald die Verbindung steht (das WebSocket-Protokoll ruft `OnConnected` nie auf, deshalb blieben "Fehler" oder "Zuhören" stehen) |
+| `display/lcd_display.cc` | Dunkles Theme fest eingestellt; LVGL-Task auf Core 0 |
+| `audio/audio_service.cc`, `audio/engines/afe_audio_engine.cc` | Opus-Codec und Wake-Word-AFE fest auf Core 0, damit Core 1 der Gesichtserkennung bleibt (siehe Bekannte Probleme) |
 | `main/CMakeLists.txt` | Nutzt das GIF-Emoji-Set (ersetzt durch die Cyan-Augen) |
 | `idf_component.yml`, `main/CMakeLists.txt` | Fügt `espressif/human_face_detect` hinzu; `espcoredump`, damit Absturzberichte in der Coredump-Partition landen (auswerten mit der passenden `xiaozhi.elf`) |
-| `partitions/v2/16m_vinci.csv`, `config.json` | Größere App-Partitionen (Gesichtsmodell), USB-Serial-Konsole |
+| `partitions/v2/16m_vinci.csv`, `config.json` | Größere App-Partitionen (Gesichtsmodell), USB-Serial-Konsole, Coredump in den Flash, lwIP-`tcpip`-Task auf Core 0 |
 
 ## Einrichtung
 
@@ -193,6 +194,14 @@ Die Servo-Nullpositionen kommen aus NVS `servo/zero_pos_1` und `servo/zero_pos_2
 - Kamera: GC0308, 320x240 YUV422.
 
 Quelle für die Belegung: M5Stacks offizielles [StackChan-BSP](https://github.com/m5stack/StackChan-BSP).
+
+## Bekannte Probleme
+
+- **Gelegentlicher Neustart in der Gesichtserkennung.** Die esp-dl-TIE728-Kernel (MSR/MNP-Stufe) stürzen ab und zu mit IllegalInstruction, LoadProhibited oder StoreProhibited auf dem Kern ab, der die Erkennung rechnet. Gleiches Bild wie [esp-dl #237](https://github.com/espressif/esp-dl/issues/237), noch ohne Fix von Espressif. Der Roboter startet in etwa 10 s neu und macht weiter.
+  - Die Pause der Erkennung rund um Server-Neuverbindungen senkte das von etwa alle 10 min auf alle paar Stunden.
+  - Ein eigener Kern für die Erkennung (Audio, Display, Kopf und `tcpip` auf Core 0) senkte es weiter; am letzten Wochenende gab es mindestens einen Absturz (wie viele, wurde nicht aufgezeichnet).
+  - Absturz ansehen: `esptool.py read_flash 0xe00000 0x10000 core.bin`, dann `esp-coredump info_corefile -t raw -c core.bin build/xiaozhi.elf` mit der ELF des laufenden Builds.
+- **Der Server braucht Home Assistant.** Der Server öffnet seine Home-Assistant-WebSocket-Verbindung, bevor er das `hello` des Roboters beantwortet. Ist Home Assistant nicht erreichbar, zeigt der Roboter "Fehler" und verbindet sich von selbst neu, sobald Home Assistant wieder da ist.
 
 ## Danksagung und Lizenzen
 

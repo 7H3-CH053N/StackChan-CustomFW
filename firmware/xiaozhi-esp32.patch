@@ -20,10 +20,10 @@ index ab6c8a7..f1e9139 100644
                      )
  
 diff --git a/main/application.cc b/main/application.cc
-index 31de205..368d117 100644
+index 31de205..df584d7 100644
 --- a/main/application.cc
 +++ b/main/application.cc
-@@ -187,6 +187,15 @@ void Application::Run() {
+@@ -187,6 +187,16 @@ void Application::Run() {
      while (true) {
          auto bits = xEventGroupWaitBits(event_group_, ALL_EVENTS, pdTRUE, pdFALSE, portMAX_DELAY);
  
@@ -32,6 +32,7 @@ index 31de205..368d117 100644
 +                // vinci: a failed background reconnect is not the user's problem
 +                background_open_ = false;
 +                ESP_LOGW(TAG, "Background connect failed: %s", last_error_message_.c_str());
++                last_error_message_.clear();  // else idle keeps the old status text (WebSocket never calls OnConnected)
 +                bits &= ~MAIN_EVENT_ERROR;
 +            }
 +        }
@@ -39,7 +40,7 @@ index 31de205..368d117 100644
          if (bits & MAIN_EVENT_ERROR) {
              if (GetDeviceState() == kDeviceStateNotifying) {
                  StopNotification();
-@@ -276,6 +285,35 @@ void Application::Run() {
+@@ -276,6 +286,35 @@ void Application::Run() {
              auto display = Board::GetInstance().GetDisplay();
              display->UpdateStatusBar();
  
@@ -75,7 +76,15 @@ index 31de205..368d117 100644
              // Print debug info every 10 seconds
              if (clock_ticks_ % 10 == 0) {
                  SystemInfo::PrintHeapStats();
-@@ -568,11 +606,16 @@ void Application::InitializeProtocol() {
+@@ -559,6 +598,7 @@ void Application::InitializeProtocol() {
+ 
+     protocol_->OnAudioChannelOpened([this, codec, &board]() {
+         board.SetPowerSaveLevel(PowerSaveLevel::PERFORMANCE);
++        DismissAlert();  // vinci: WebSocket never calls OnConnected, so clear old errors here
+         if (protocol_->server_sample_rate() != codec->output_sample_rate()) {
+             ESP_LOGW(TAG,
+                      "Server sample rate %d does not match device output sample rate %d, "
+@@ -568,11 +608,16 @@ void Application::InitializeProtocol() {
      });
  
      protocol_->OnAudioChannelClosed([this, &board]() {
@@ -92,7 +101,7 @@ index 31de205..368d117 100644
          });
      });
  
-@@ -672,6 +715,7 @@ void Application::InitializeProtocol() {
+@@ -672,6 +717,7 @@ void Application::InitializeProtocol() {
              if (cJSON_IsString(emotion)) {
                  Schedule([display, emotion_str = std::string(emotion->valuestring)]() {
                      display->SetEmotion(emotion_str.c_str());
@@ -100,7 +109,7 @@ index 31de205..368d117 100644
                  });
              }
          } else if (strcmp(type->valuestring, "mcp") == 0) {
-@@ -830,7 +874,7 @@ void Application::ContinueOpenAudioChannel(ListeningMode mode) {
+@@ -830,7 +876,7 @@ void Application::ContinueOpenAudioChannel(ListeningMode mode) {
      board.SetPowerSaveLevel(PowerSaveLevel::PERFORMANCE);
  
      if (!protocol_->IsAudioChannelOpened()) {
@@ -109,7 +118,7 @@ index 31de205..368d117 100644
              // Return to idle so the device is not stuck in the connecting
              // state (not every failure path reports a network error)
              SetDeviceState(kDeviceStateIdle);
-@@ -966,7 +1010,7 @@ void Application::ContinueWakeWordInvoke(const std::string& wake_word) {
+@@ -966,7 +1012,7 @@ void Application::ContinueWakeWordInvoke(const std::string& wake_word) {
      board.SetPowerSaveLevel(PowerSaveLevel::PERFORMANCE);
  
      if (!protocol_->IsAudioChannelOpened()) {
@@ -134,6 +143,50 @@ index f2b9a00..5a3310b 100644
      TaskHandle_t activation_task_handle_ = nullptr;
  
  
+diff --git a/main/audio/audio_service.cc b/main/audio/audio_service.cc
+index 7f7582b..3b74951 100644
+--- a/main/audio/audio_service.cc
++++ b/main/audio/audio_service.cc
+@@ -161,13 +161,14 @@ void AudioService::Start() {
+ #endif
+ 
+     /* Start the opus codec task */
+-    xTaskCreate(
++    // vinci: core 0, away from the face detector's PIE use on core 1.
++    xTaskCreatePinnedToCore(
+         [](void* arg) {
+             AudioService* audio_service = (AudioService*)arg;
+             audio_service->OpusCodecTask();
+             vTaskDelete(NULL);
+         },
+-        "opus_codec", 2048 * 12, this, 2, &opus_codec_task_handle_);
++        "opus_codec", 2048 * 12, this, 2, &opus_codec_task_handle_, 0);
+ }
+ 
+ void AudioService::Stop() {
+diff --git a/main/audio/engines/afe_audio_engine.cc b/main/audio/engines/afe_audio_engine.cc
+index 3823d10..b13b032 100644
+--- a/main/audio/engines/afe_audio_engine.cc
++++ b/main/audio/engines/afe_audio_engine.cc
+@@ -219,14 +219,16 @@ bool AfeAudioEngine::Initialize(AudioCodec* codec, int frame_duration_ms,
+         return false;
+     }
+ 
+-    processing_task_ = xTaskCreateStatic(
++    // vinci: pinned to core 0. esp-sr and the face detector (esp-dl, core 1)
++    // both use the PIE vector unit; sharing a core crashed the detector.
++    processing_task_ = xTaskCreateStaticPinnedToCore(
+         [](void* arg) {
+             auto* engine = static_cast<AfeAudioEngine*>(arg);
+             engine->ProcessingTask();
+             vTaskDelete(nullptr);
+         },
+         "audio_afe", kProcessingTaskStackSize, this, 3, processing_task_stack_,
+-        processing_task_buffer_);
++        processing_task_buffer_, 0);
+     if (processing_task_ == nullptr) {
+         ESP_LOGE(TAG, "Failed to create AFE processing task, internal free=%u largest=%u",
+                  heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
 diff --git a/main/boards/common/board.h b/main/boards/common/board.h
 index 19d3f2f..40a1953 100644
 --- a/main/boards/common/board.h
@@ -213,10 +266,10 @@ index f36d26a..4803f8f 100644
      virtual bool SetHMirror(bool enabled) override;
      virtual bool SetVFlip(bool enabled) override;
 diff --git a/main/boards/m5stack/core-s3/config.json b/main/boards/m5stack/core-s3/config.json
-index 0180483..99c07c6 100644
+index 0180483..82c18d0 100644
 --- a/main/boards/m5stack/core-s3/config.json
 +++ b/main/boards/m5stack/core-s3/config.json
-@@ -13,8 +13,13 @@
+@@ -13,8 +13,16 @@
                  "CONFIG_SPIRAM_MODE_QUAD=y",
                  "CONFIG_CAMERA_GC0308=y",
                  "CONFIG_CAMERA_GC0308_AUTO_DETECT_DVP_INTERFACE_SENSOR=y",
@@ -226,7 +279,10 @@ index 0180483..99c07c6 100644
 +                "CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y",
 +                "CONFIG_ESP_CONSOLE_UART_DEFAULT=n",
 +                "CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH=y",
-+                "CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y"
++                "CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y",
++                "CONFIG_ESP_COREDUMP_MAX_TASKS_NUM=16",
++                "CONFIG_ESP_SYSTEM_PANIC_PRINT_REBOOT=y",
++                "CONFIG_LWIP_TCPIP_TASK_AFFINITY_CPU0=y"
              ]
          }
      ]
@@ -364,10 +420,10 @@ index 0000000..f781421
 +};
 diff --git a/main/boards/m5stack/core-s3/head_motion.h b/main/boards/m5stack/core-s3/head_motion.h
 new file mode 100755
-index 0000000..b3e3000
+index 0000000..c69e61f
 --- /dev/null
 +++ b/main/boards/m5stack/core-s3/head_motion.h
-@@ -0,0 +1,298 @@
+@@ -0,0 +1,299 @@
 +// vinci: calm head motion for the StackChan servos.
 +//
 +// Hardware (from m5stack/StackChan-BSP): two Feetech SCS0009 on UART1, 1 Mbaud,
@@ -438,8 +494,9 @@ index 0000000..b3e3000
 +        // Start pose is unknown, so let the servo glide to centre over 1.5 s.
 +        Send(0, 0, 1500);
 +        gesture_ = {{0, 55, 1000}, {0, 45, 0}};  // wake-up stretch, also a pitch self-test
-+        xTaskCreate([](void* p) { static_cast<HeadMotion*>(p)->Loop(); },
-+                    "head", 4096, this, 2, nullptr);
++        // Core 0: core 1 belongs to face detection alone (see face_tracker.h).
++        xTaskCreatePinnedToCore([](void* p) { static_cast<HeadMotion*>(p)->Loop(); },
++                                "head", 4096, this, 2, nullptr, 0);
 +    }
 +
 +    // Called from Application when the server sends an emotion.
@@ -717,7 +774,7 @@ index 83d1259..997106a 100644
          static CustomBacklight backlight(pmic_);
          return &backlight;
 diff --git a/main/display/lcd_display.cc b/main/display/lcd_display.cc
-index 3462ac0..fb7d53d 100644
+index 3462ac0..3b191fb 100644
 --- a/main/display/lcd_display.cc
 +++ b/main/display/lcd_display.cc
 @@ -79,7 +79,10 @@ LcdDisplay::LcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_handle_
@@ -732,6 +789,15 @@ index 3462ac0..fb7d53d 100644
      current_theme_ = LvglThemeManager::GetInstance().GetTheme(theme_name);
  
      // Create a timer to hide the preview image
+@@ -165,7 +168,7 @@ SpiLcdDisplay::SpiLcdDisplay(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_h
+     lvgl_port_cfg_t port_cfg = ESP_LVGL_PORT_INIT_CONFIG();
+     port_cfg.task_priority = 1;
+ #if CONFIG_SOC_CPU_CORES_NUM > 1
+-    port_cfg.task_affinity = 1;
++    port_cfg.task_affinity = 0;  // vinci: core 1 is for face detection only
+ #endif
+     lvgl_port_init(&port_cfg);
+ 
 diff --git a/main/idf_component.yml b/main/idf_component.yml
 index 2473f56..35b81a0 100644
 --- a/main/idf_component.yml
