@@ -11,7 +11,6 @@ the sides) with a black background so it blends into the dark theme.
 import argparse
 import math
 import os
-import sys
 
 from PIL import Image, ImageDraw
 
