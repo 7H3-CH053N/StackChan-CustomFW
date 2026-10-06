@@ -19,4 +19,23 @@
   actions:
     - action: rest_command.stackchan_say
       data:
-        occasion: "In 30 minutes: {{ trigger.calendar_event.summary | replace('\n', ' ') | trim }}"
+        occasion: "In 30 minutes: {{ trigger.calendar_event.summary | replace('\\n', ' ') | trim }}"
+
+- alias: StackChan announces that the front door opened
+  triggers:
+    - trigger: state
+      entity_id: binary_sensor.front_door
+      to: "on"
+  actions:
+    - action: rest_command.stackchan_say
+      data:
+        occasion: "The front door has opened."
+
+- alias: StackChan says good night
+  triggers:
+    - trigger: time
+      at: "22:00:00"
+  actions:
+    - action: rest_command.stackchan_say
+      data:
+        occasion: "It's 10 PM. Time to wind down and get some rest."
