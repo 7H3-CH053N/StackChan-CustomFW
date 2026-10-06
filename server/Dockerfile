@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 # ─────────────────────────────────────────────────────────────────────────────
-# Vinci StackChan Server  (Fork von rudyll/stackchan_ha_addons)
+# Vinci StackChan Server  (Fork von rudyll/stackchan-ai-server)
 # - Klont upstream
 # - Patcht ota_proxy.go: optionale ai.public_ws_url (für wss:// hinter Reverse-Proxy/Tunnel)
 # - Rein env-getrieben, kein /data/options.json mehr
@@ -17,7 +17,7 @@ WORKDIR /src
 # deliberately and re-test /vinci/say.
 ARG UPSTREAM_COMMIT=195eed0f41a039762998fc58315efc1077447cb5
 RUN git init -q . && \
-    git remote add origin https://github.com/rudyll/stackchan_ha_addons.git && \
+    git remote add origin https://github.com/rudyll/stackchan-ai-server.git && \
     git fetch -q --depth 1 origin ${UPSTREAM_COMMIT} && \
     git checkout -q FETCH_HEAD
 

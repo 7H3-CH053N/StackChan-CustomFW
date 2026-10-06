@@ -35,7 +35,7 @@ Custom firmware and a self-hosted voice server for the **M5Stack StackChan** (Co
 | `firmware/xiaozhi-esp32.patch` | All firmware changes against a pinned [xiaozhi-esp32](https://github.com/78/xiaozhi-esp32) commit |
 | `firmware/build.sh` | Clones upstream, applies the patch, drops in the eyes, builds |
 | `firmware/eyes/` | `make_eyes.py` (eye animation generator, Pillow) and the generated GIFs |
-| `server/Dockerfile` | The complete server: fetches [rudyll/stackchan_ha_addons](https://github.com/rudyll/stackchan_ha_addons) at a pinned commit (`UPSTREAM_COMMIT`) and applies all server patches inline. Bump the pin deliberately and re-test `/vinci/say`: an unpinned upstream change once broke proactive speech on a plain redeploy |
+| `server/Dockerfile` | The complete server: fetches [rudyll/stackchan-ai-server](https://github.com/rudyll/stackchan-ai-server) at a pinned commit (`UPSTREAM_COMMIT`) and applies all server patches inline. Bump the pin deliberately and re-test `/vinci/say`: an unpinned upstream change once broke proactive speech on a plain redeploy |
 | `server/docker-compose.yml`, `server/.env.example` | Run it anywhere Docker runs |
 | `homeassistant/` | `rest_command` and example automations for proactive speech |
 
@@ -134,7 +134,7 @@ python $IDF_PATH/components/nvs_flash/nvs_partition_generator/nvs_partition_gen.
 python -m esptool --chip esp32s3 -p <PORT> write-flash 0x9000 nvs.bin
 ```
 
-This replaces the whole NVS partition: Wi-Fi credentials are gone (the robot opens its setup hotspot on the next boot) and the servo calibration falls back to the defaults (yaw 460, pitch 620). [rudyll's `flash_nvs.py`](https://github.com/rudyll/stackchan_ha_addons) does the same interactively.
+This replaces the whole NVS partition: Wi-Fi credentials are gone (the robot opens its setup hotspot on the next boot) and the servo calibration falls back to the defaults (yaw 460, pitch 620). [rudyll's `flash_nvs.py`](https://github.com/rudyll/stackchan-ai-server) does the same interactively.
 
 ### 5. Home Assistant (optional, proactive speech)
 
@@ -210,7 +210,7 @@ Issues and pull requests are welcome, in English or German. [CONTRIBUTING.md](CO
 ## Credits and licenses
 
 - [78/xiaozhi-esp32](https://github.com/78/xiaozhi-esp32), MIT
-- [rudyll/stackchan_ha_addons](https://github.com/rudyll/stackchan_ha_addons), MIT
+- [rudyll/stackchan-ai-server](https://github.com/rudyll/stackchan-ai-server), MIT
 - [m5stack/StackChan-BSP](https://github.com/m5stack/StackChan-BSP), MIT (pinout and servo protocol reference)
 - [espressif/esp-dl](https://github.com/espressif/esp-dl) and `human_face_detect`, via the ESP component registry
 - Eye style inspired by the esp32-eyes projects

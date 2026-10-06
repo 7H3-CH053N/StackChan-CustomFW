@@ -18,7 +18,7 @@ Nothing upstream is vendored. Both halves are patches against pinned upstream co
 | Part | Upstream | Pin | Where the changes live |
 |---|---|---|---|
 | Firmware | [78/xiaozhi-esp32](https://github.com/78/xiaozhi-esp32) | `UPSTREAM_COMMIT` in `firmware/build.sh` | `firmware/xiaozhi-esp32.patch` |
-| Server | [rudyll/stackchan_ha_addons](https://github.com/rudyll/stackchan_ha_addons) | `ARG UPSTREAM_COMMIT` in `server/Dockerfile` | inline in `server/Dockerfile` (heredocs, `patch -p1`, `awk`) |
+| Server | [rudyll/stackchan-ai-server](https://github.com/rudyll/stackchan-ai-server) | `ARG UPSTREAM_COMMIT` in `server/Dockerfile` | inline in `server/Dockerfile` (heredocs, `patch -p1`, `awk`) |
 
 Bumping a pin is a change of its own: open a pull request just for that and say what you re-tested. An unpinned upstream once broke proactive speech on a plain redeploy.
 

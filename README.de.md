@@ -35,7 +35,7 @@ Eigene Firmware und ein selbst gehosteter Sprachserver für den **M5Stack StackC
 | `firmware/xiaozhi-esp32.patch` | Alle Firmware-Änderungen gegen einen festen [xiaozhi-esp32](https://github.com/78/xiaozhi-esp32)-Commit |
 | `firmware/build.sh` | Klont Upstream, wendet den Patch an, legt die Augen ein, baut |
 | `firmware/eyes/` | `make_eyes.py` (Generator für die Augenanimationen, Pillow) und die erzeugten GIFs |
-| `server/Dockerfile` | Der komplette Server: holt [rudyll/stackchan_ha_addons](https://github.com/rudyll/stackchan_ha_addons) auf einem festen Commit (`UPSTREAM_COMMIT`) und bringt alle Server-Patches inline mit. Den Pin bewusst anheben und danach `/vinci/say` testen: Eine ungepinnte Upstream-Änderung hat proaktives Sprechen schon einmal bei einem normalen Redeploy kaputt gemacht |
+| `server/Dockerfile` | Der komplette Server: holt [rudyll/stackchan-ai-server](https://github.com/rudyll/stackchan-ai-server) auf einem festen Commit (`UPSTREAM_COMMIT`) und bringt alle Server-Patches inline mit. Den Pin bewusst anheben und danach `/vinci/say` testen: Eine ungepinnte Upstream-Änderung hat proaktives Sprechen schon einmal bei einem normalen Redeploy kaputt gemacht |
 | `server/docker-compose.yml`, `server/.env.example` | Läuft überall, wo Docker läuft |
 | `homeassistant/` | `rest_command` und Beispiel-Automationen für proaktives Sprechen |
 
@@ -134,7 +134,7 @@ python $IDF_PATH/components/nvs_flash/nvs_partition_generator/nvs_partition_gen.
 python -m esptool --chip esp32s3 -p <PORT> write-flash 0x9000 nvs.bin
 ```
 
-Das ersetzt die ganze NVS-Partition: WLAN-Zugangsdaten sind weg (der Roboter öffnet beim nächsten Start seinen Einrichtungs-Hotspot) und die Servo-Kalibrierung fällt auf die Standardwerte zurück (Yaw 460, Pitch 620). [rudylls `flash_nvs.py`](https://github.com/rudyll/stackchan_ha_addons) macht dasselbe interaktiv.
+Das ersetzt die ganze NVS-Partition: WLAN-Zugangsdaten sind weg (der Roboter öffnet beim nächsten Start seinen Einrichtungs-Hotspot) und die Servo-Kalibrierung fällt auf die Standardwerte zurück (Yaw 460, Pitch 620). [rudylls `flash_nvs.py`](https://github.com/rudyll/stackchan-ai-server) macht dasselbe interaktiv.
 
 ### 5. Home Assistant (optional, proaktives Sprechen)
 
@@ -210,7 +210,7 @@ Issues und Pull Requests sind willkommen, auf Deutsch oder Englisch. [CONTRIBUTI
 ## Danksagung und Lizenzen
 
 - [78/xiaozhi-esp32](https://github.com/78/xiaozhi-esp32), MIT
-- [rudyll/stackchan_ha_addons](https://github.com/rudyll/stackchan_ha_addons), MIT
+- [rudyll/stackchan-ai-server](https://github.com/rudyll/stackchan-ai-server), MIT
 - [m5stack/StackChan-BSP](https://github.com/m5stack/StackChan-BSP), MIT (Referenz für Pinbelegung und Servo-Protokoll)
 - [espressif/esp-dl](https://github.com/espressif/esp-dl) und `human_face_detect`, über die ESP Component Registry
 - Augen-Stil inspiriert von den esp32-eyes-Projekten
