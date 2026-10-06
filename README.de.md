@@ -203,6 +203,10 @@ Quelle für die Belegung: M5Stacks offizielles [StackChan-BSP](https://github.co
   - Absturz ansehen: `esptool.py read_flash 0xe00000 0x10000 core.bin`, dann `esp-coredump info_corefile -t raw -c core.bin build/xiaozhi.elf` mit der ELF des laufenden Builds.
 - **Der Server braucht Home Assistant.** Der Server öffnet seine Home-Assistant-WebSocket-Verbindung, bevor er das `hello` des Roboters beantwortet. Ist Home Assistant nicht erreichbar, zeigt der Roboter "Fehler" und verbindet sich von selbst neu, sobald Home Assistant wieder da ist.
 
+## Mitmachen
+
+Issues und Pull Requests sind willkommen, auf Deutsch oder Englisch. [CONTRIBUTING.md](CONTRIBUTING.md) erklärt, wie der Patch-Aufbau funktioniert und wie man am Gerät testet (auf Englisch). Gute Einstiege sind die Issues mit dem Label [`good first issue`](../../issues?q=is%3Aopen+label%3A%22good+first+issue%22).
+
 ## Danksagung und Lizenzen
 
 - [78/xiaozhi-esp32](https://github.com/78/xiaozhi-esp32), MIT

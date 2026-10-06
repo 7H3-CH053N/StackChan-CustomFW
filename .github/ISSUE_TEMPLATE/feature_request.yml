@@ -1,0 +1,21 @@
+name: Idea or feature request
+description: Something the robot or server should do
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What should it do, and why would it help?
+    validations:
+      required: true
+  - type: textarea
+    id: how
+    attributes:
+      label: Any idea how it could work?
+      description: Optional. Pointers to upstream code, other StackChan projects or docs are welcome.
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Would you like to work on it?
+      options:
+        - label: Yes, I'd like to try this myself

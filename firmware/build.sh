@@ -21,7 +21,7 @@ WORK=${WORK:-$HERE/build-work}
 if [ ! -d "$WORK/.git" ]; then
     git clone "$UPSTREAM" "$WORK"
     git -C "$WORK" checkout -q "$UPSTREAM_COMMIT"
-    git -C "$WORK" apply "$HERE/xiaozhi-esp32.patch"
+    git -C "$WORK" apply --index "$HERE/xiaozhi-esp32.patch"  # --index: new files show up in `git diff HEAD`
 fi
 cd "$WORK"
 

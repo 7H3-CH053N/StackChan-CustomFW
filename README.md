@@ -203,6 +203,10 @@ Source for the pinout: M5Stack's official [StackChan-BSP](https://github.com/m5s
   - To look at a crash: `esptool.py read_flash 0xe00000 0x10000 core.bin`, then `esp-coredump info_corefile -t raw -c core.bin build/xiaozhi.elf` with the ELF of the running build.
 - **The server needs Home Assistant.** The server opens its Home Assistant WebSocket before it answers the robot's `hello`. If Home Assistant is unreachable, the robot shows "Error" and reconnects on its own once Home Assistant is back.
 
+## Contributing
+
+Issues and pull requests are welcome, in English or German. [CONTRIBUTING.md](CONTRIBUTING.md) explains how the patch-based layout works and how to test on the device. Good places to start are the issues labelled [`good first issue`](../../issues?q=is%3Aopen+label%3A%22good+first+issue%22).
+
 ## Credits and licenses
 
 - [78/xiaozhi-esp32](https://github.com/78/xiaozhi-esp32), MIT
