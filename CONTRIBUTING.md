@@ -4,6 +4,8 @@ Thanks for wanting to help. This project turns the M5Stack StackChan into a self
 
 New here? Look for issues labelled [`good first issue`](../../issues?q=is%3Aopen+label%3A%22good+first+issue%22). Issues and pull requests in English or German are both fine.
 
+Everyone taking part is expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+
 ## Ways to help
 
 - **Try it on your StackChan** and report what happens, good or bad. Every board revision, camera and Wi-Fi setup we hear about makes the build more reliable.
