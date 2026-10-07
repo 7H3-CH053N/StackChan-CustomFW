@@ -11,7 +11,7 @@ jobs:
     name: ESP-IDF 6.1 (CoreS3)
     runs-on: ubuntu-latest
     container:
-      image: espressif/idf:release-v6.1
+      image: espressif/idf:v6.1  # the release-v6.1 branch image moves; its gdma API rename broke uart-uhci
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
