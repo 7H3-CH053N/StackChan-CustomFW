@@ -8,16 +8,18 @@ GIFs because the xiaozhi firmware displays images, not drawing code.
 Output is 320x240 (full screen, unlike the 240x240 otto set that left bars on
 the sides) with a black background so it blends into the dark theme.
 """
+import argparse
 import math
 import os
-import sys
 
 from PIL import Image, ImageDraw
 
 W, H = 320, 240
 BG = (0, 0, 0)
-CYAN = (0, 229, 255)
-CYAN_DIM = (0, 150, 180)
+DEFAULT_COLOUR = (0, 229, 255)
+DEFAULT_DIM_COLOUR = (0, 150, 180)
+COLOUR = DEFAULT_COLOUR
+DIM_COLOUR = DEFAULT_DIM_COLOUR
 
 # Eye geometry at rest
 EYE_W, EYE_H = 78, 96
@@ -68,7 +70,7 @@ def frame(params):
     rx = CX + GAP // 2 + EYE_W // 2 + params.get("dx", 0)
     cy = CY + params.get("dy", 0)
 
-    colour = params.get("colour", CYAN)
+    colour = params.get("colour", COLOUR)
     lw = int(EYE_W * params.get("sx", 1.0))
     lh = int(EYE_H * params.get("sy", 1.0))
     rw = int(EYE_W * params.get("sx_r", params.get("sx", 1.0)))
@@ -236,14 +238,32 @@ def build():
                     + [{"sy": 1.0, "sy_r": 0.15}] * 4, 160)
     E["confident"] = (blink_seq({"sy": 0.72, "tilt": 8}, hold=12), 75)
     E["cool"] = ([{"sy": 0.55, "tilt": 6, "dx": d} for d in (0, 4, 8, 4, 0, -4, -8, -4)], 140)
-    E["embarrassed"] = ([{"sy": 0.7, "dy": 12, "dx": d, "colour": CYAN_DIM}
+    E["embarrassed"] = ([{"sy": 0.7, "dy": 12, "dx": d, "colour": DIM_COLOUR}
                          for d in (0, -8, -12, -8, 0, 8, 12, 8)], 150)
     E["delicious"] = ([{"curve": 0.7, "sx": 1.05}, {"curve": 0.5, "sx": 1.0},
                        {"sy": 0.25}, {"curve": 0.5, "sx": 1.0}] * 2, 150)
     return E
 
 
-def main(outdir):
+def parse_colour(value):
+    """Parse an RGB colour written as #RRGGBB or RRGGBB."""
+    value = value.removeprefix("#")
+    if len(value) != 6:
+        raise argparse.ArgumentTypeError("colour must use the #RRGGBB format")
+    try:
+        return tuple(int(value[i:i + 2], 16) for i in (0, 2, 4))
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("colour must use the #RRGGBB format") from error
+
+
+def main(outdir="eyes_cyan", colour=DEFAULT_COLOUR):
+    global COLOUR, DIM_COLOUR
+    COLOUR = colour
+    DIM_COLOUR = (
+        DEFAULT_DIM_COLOUR
+        if colour == DEFAULT_COLOUR
+        else tuple(round(channel * 0.66) for channel in colour)
+    )
     os.makedirs(outdir, exist_ok=True)
     built = build()
     for name, (frames, dur) in built.items():
@@ -260,8 +280,12 @@ def main(outdir):
 
 
 if __name__ == "__main__":
-    out = sys.argv[1] if len(sys.argv) > 1 else "eyes_cyan"
-    built = main(out)
+    parser = argparse.ArgumentParser(description="Generate eye animation GIFs")
+    parser.add_argument("outdir", nargs="?", default="eyes_cyan")
+    parser.add_argument("--colour", type=parse_colour, default=DEFAULT_COLOUR,
+                        metavar="#RRGGBB", help="eye colour in RGB hex (default: #00E5FF)")
+    args = parser.parse_args()
+    built = main(args.outdir, args.colour)
     # smallest useful check: every emotion the server can send must exist
     need = {"neutral", "happy", "laughing", "funny", "silly", "sad", "crying",
             "angry", "surprised", "shocked", "thinking", "sleepy", "kissy",

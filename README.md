@@ -39,6 +39,16 @@ Custom firmware and a self-hosted voice server for the **M5Stack StackChan** (Co
 | `server/docker-compose.yml`, `server/.env.example` | Run it anywhere Docker runs |
 | `homeassistant/` | `rest_command` and example automations for proactive speech |
 
+### Choose an eye colour
+
+The committed eye animations are cyan. To regenerate them in another RGB colour, run:
+
+```bash
+python firmware/eyes/make_eyes.py firmware/eyes/gifs --colour "#FF8800"
+```
+
+This replaces the GIFs in `firmware/eyes/gifs`. Omit `--colour` to regenerate the default cyan set.
+
 ### What the firmware patch changes
 
 | File | Change |
