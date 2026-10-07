@@ -1,0 +1,23 @@
+name: Firmware build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: ESP-IDF 6.1 (CoreS3)
+    runs-on: ubuntu-latest
+    container:
+      image: espressif/idf:release-v6.1
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build patched firmware
+        shell: bash
+        run: |
+          . /opt/esp/idf/export.sh
+          firmware/build.sh
