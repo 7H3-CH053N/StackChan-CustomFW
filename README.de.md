@@ -44,7 +44,7 @@ Eigene Firmware und ein selbst gehosteter Sprachserver für den **M5Stack StackC
 | Datei | Änderung |
 |---|---|
 | `boards/m5stack/core-s3/head_motion.h` | **Neu.** Servo-Treiber (UART1, 1 Mbaud, GPIO6/7), Servo-Strom über den PY32-IO-Expander, gedämpfter Bewegungs-Nachführer, Emotions-Gesten, Gesichtssuche und Ruhe |
-| `boards/m5stack/core-s3/face_tracker.h` | **Neu.** esp-dl-Gesichtserkennung (MSR+MNP) auf Kamerabildern mit ~2,5 fps, das größte Gesicht geht an den Kopf. Pausiert 15 s rund um jeden Verbindungsauf- und -abbau zum Server: Die esp-dl-TIE728-Kernel stürzten (IllegalInstruction) während des Verbindungsaufbaus ab, siehe [esp-dl #237](https://github.com/espressif/esp-dl/issues/237) |
+| `boards/m5stack/core-s3/face_tracker.h` | **Neu.** esp-dl-Gesichtserkennung (MSR+MNP) auf Kamerabildern mit ~2,5 fps, das größte Gesicht geht an den Kopf. Pausiert 15 s rund um jeden Verbindungsauf- und -abbau zum Server: Die esp-dl-TIE728-Kernel stürzten (IllegalInstruction) während des Verbindungsaufbaus ab |
 | `boards/m5stack/core-s3/m5stack_core_s3.cc` | Startet Kopf und Face-Tracker, Display wird nie gedimmt oder abgeschaltet |
 | `boards/common/esp_video.*` | `Peek()` für Rohbild-Zugriff, Mutex gemeinsam mit dem Foto-Tool |
 | `boards/common/board.h`, `application.cc` | `OnEmotion()`-Hook, damit Server-Emotionen beim Board ankommen; hält die Server-Verbindung im Leerlauf offen (Upstream verbindet nur beim Wake-Word, proaktives Sprechen scheiterte deshalb nach jedem Start mit 503). Stille Wiederholversuche mit Backoff bis 10 min, 3 s nachdem der Server die Verbindung schließt. Beendet ein Gespräch nach 20 s Zuhören ohne Antwort (weder der lautstärkebasierte Server-Timeout noch die Geräte-VAD haben ein Büro je als still erkannt). Löscht eine alte Fehleranzeige, sobald die Verbindung steht (das WebSocket-Protokoll ruft `OnConnected` nie auf, deshalb blieben "Fehler" oder "Zuhören" stehen) |
@@ -197,7 +197,7 @@ Quelle für die Belegung: M5Stacks offizielles [StackChan-BSP](https://github.co
 
 ## Bekannte Probleme
 
-- **Gelegentlicher Neustart in der Gesichtserkennung.** Die esp-dl-TIE728-Kernel (MSR/MNP-Stufe) stürzen ab und zu mit IllegalInstruction, LoadProhibited oder StoreProhibited auf dem Kern ab, der die Erkennung rechnet. Gleiches Bild wie [esp-dl #237](https://github.com/espressif/esp-dl/issues/237), noch ohne Fix von Espressif. Der Roboter startet in etwa 10 s neu und macht weiter.
+- **Gelegentlicher Neustart in der Gesichtserkennung.** Die esp-dl-TIE728-Kernel (MSR/MNP-Stufe) stürzen ab und zu mit IllegalInstruction, LoadProhibited oder StoreProhibited auf dem Kern ab, der die Erkennung rechnet. Ein passendes Ticket bei Espressif gibt es bisher nicht; jeder Absturz lag bisher in der TIE728-3x3-Depthwise-Faltung. Der Roboter startet in etwa 10 s neu und macht weiter.
   - Die Pause der Erkennung rund um Server-Neuverbindungen senkte das von etwa alle 10 min auf alle paar Stunden.
   - Ein eigener Kern für die Erkennung (Audio, Display, Kopf und `tcpip` auf Core 0) senkte es weiter; am letzten Wochenende gab es mindestens einen Absturz (wie viele, wurde nicht aufgezeichnet).
   - Absturz ansehen: `esptool.py read_flash 0xe00000 0x10000 core.bin`, dann `esp-coredump info_corefile -t raw -c core.bin build/xiaozhi.elf` mit der ELF des laufenden Builds.

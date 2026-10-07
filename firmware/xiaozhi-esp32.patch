@@ -331,7 +331,7 @@ index 0000000..f781421
 +
 +    // The esp-dl TIE728 kernels crashed (IllegalInstruction, Core 1) while the
 +    // server channel was connecting; the crash rate tracked the reconnect
-+    // rate. Unexplained upstream (esp-dl #237), so detection simply sits out
++    // rate. No upstream fix known, so detection simply sits out
 +    // every connect / disconnect.
 +    void Pause(int ms) { pause_until_ = esp_timer_get_time() / 1000 + ms; }
 +
