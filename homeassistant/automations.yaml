@@ -20,3 +20,67 @@
     - action: rest_command.stackchan_say
       data:
         occasion: "In 30 minutes: {{ trigger.calendar_event.summary | replace('\n', ' ') | trim }}"
+
+- alias: StackChan announces that the front door opened
+  triggers:
+    - trigger: state
+      entity_id: binary_sensor.front_door
+      to: "on"
+  actions:
+    - action: rest_command.stackchan_say
+      data:
+        occasion: "The front door has opened."
+
+- alias: StackChan says good night
+  triggers:
+    - trigger: time
+      at: "22:00:00"
+  actions:
+    - action: rest_command.stackchan_say
+      data:
+        occasion: "It's 10 PM. Time to wind down and get some rest."
+
+- alias: StackChan warns you when precipitation starts
+  triggers:
+    - trigger: state
+      entity_id: weather.home
+      to:
+        - rainy
+        - pouring
+        - lightning-rainy
+        - snowy-rainy
+  actions:
+    - action: rest_command.stackchan_say
+      data:
+        occasion: "Precipitation is starting. You may want to take an umbrella."
+
+- alias: StackChan announces that the washing machine finished
+  triggers:
+    - trigger: state
+      entity_id: binary_sensor.washing_machine
+      from: "on"
+      to: "off"
+  actions:
+    - action: rest_command.stackchan_say
+      data:
+        occasion: "The washing machine has finished."
+
+- alias: StackChan reminds you when the front door is left open
+  triggers:
+    - trigger: state
+      entity_id: binary_sensor.front_door
+      to: "on"
+      for: "00:05:00"
+  actions:
+    - action: rest_command.stackchan_say
+      data:
+        occasion: "The front door has been open for five minutes."
+
+- alias: StackChan says good morning at sunrise
+  triggers:
+    - trigger: sun
+      event: sunrise
+  actions:
+    - action: rest_command.stackchan_say
+      data:
+        occasion: "Good morning. I hope you have a nice day."
