@@ -197,7 +197,7 @@ Quelle für die Belegung: M5Stacks offizielles [StackChan-BSP](https://github.co
 
 ## Bekannte Probleme
 
-- **Gelegentlicher Neustart in der Gesichtserkennung.** Die esp-dl-TIE728-Kernel (MSR/MNP-Stufe) stürzen ab und zu mit IllegalInstruction, LoadProhibited oder StoreProhibited auf dem Kern ab, der die Erkennung rechnet. Ein passendes Ticket bei Espressif gibt es bisher nicht; jeder Absturz lag bisher in der TIE728-3x3-Depthwise-Faltung. Der Roboter startet in etwa 10 s neu und macht weiter.
+- **Gelegentlicher Neustart in der Gesichtserkennung.** Die esp-dl-TIE728-Kernel (MSR/MNP-Stufe) stürzen ab und zu mit IllegalInstruction, LoadProhibited oder StoreProhibited auf dem Kern ab, der die Erkennung rechnet. Bei Espressif gemeldet als [esp-dl #337](https://github.com/espressif/esp-dl/issues/337); jeder Absturz lag bisher in der TIE728-3x3-Depthwise-Faltung. Der C-Weg von esp-dl für diese Schicht beendete die Abstürze, aber auch jede Erkennung. Der Roboter startet in etwa 10 s neu und macht weiter.
   - Die Pause der Erkennung rund um Server-Neuverbindungen senkte das von etwa alle 10 min auf alle paar Stunden.
   - Ein eigener Kern für die Erkennung (Audio, Display, Kopf und `tcpip` auf Core 0) senkte es weiter; am letzten Wochenende gab es mindestens einen Absturz (wie viele, wurde nicht aufgezeichnet).
   - Absturz ansehen: `esptool.py read_flash 0xe00000 0x10000 core.bin`, dann `esp-coredump info_corefile -t raw -c core.bin build/xiaozhi.elf` mit der ELF des laufenden Builds.
