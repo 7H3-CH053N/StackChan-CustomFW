@@ -62,7 +62,7 @@ This replaces the GIFs in `firmware/eyes/gifs`. Omit `--colour` to regenerate th
 | `audio/audio_service.cc`, `audio/engines/afe_audio_engine.cc` | Opus codec and wake-word AFE pinned to core 0, so core 1 is left to face detection (see Known issues) |
 | `main/CMakeLists.txt` | Uses the GIF emoji set (replaced by the cyan eyes) |
 | `idf_component.yml`, `main/CMakeLists.txt` | Adds `espressif/human_face_detect`; `espcoredump` so crash reports land in the coredump partition (decode with the matching `xiaozhi.elf`) |
-| `partitions/v2/16m_vinci.csv`, `config.json` | Larger app partitions (face model), USB serial console, coredump to flash, lwIP `tcpip` task on core 0 |
+| `partitions/v2/16m_vinci.csv`, `config.json` | Larger app partitions (face model), USB serial console, coredump to flash, lwIP `tcpip` task on core 0, CPU at 160 MHz |
 
 ## Setup
 
@@ -207,9 +207,10 @@ Source for the pinout: M5Stack's official [StackChan-BSP](https://github.com/m5s
 
 ## Known issues
 
-- **Occasional reboot in face detection.** The esp-dl TIE728 kernels (MSR/MNP stage) sometimes crash with IllegalInstruction, LoadProhibited or StoreProhibited on the core that runs detection. Reported upstream as [esp-dl #337](https://github.com/espressif/esp-dl/issues/337); every crash so far was inside the TIE728 3x3 depthwise convolution. Forcing esp-dl's C path for that layer stopped the crashes but also stopped all detections. The robot reboots in about 10 s and carries on.
+- **Face detection crashes at 240 MHz (worked around).** The esp-dl TIE728 kernels (MSR/MNP stage) sometimes crash with IllegalInstruction, LoadProhibited or StoreProhibited on the core that runs detection. Reported upstream as [esp-dl #337](https://github.com/espressif/esp-dl/issues/337); every crash so far was inside the TIE728 3x3 depthwise convolution. Forcing esp-dl's C path for that layer stopped the crashes but also stopped all detections. The robot reboots in about 10 s and carries on.
   - Pausing detection around server reconnects cut it from roughly every 10 min to every few hours.
   - Giving detection a core of its own (audio, display, head and `tcpip` on core 0) brought it down further; the last weekend ended with at least one crash (how many was not logged).
+  - **Running the CPU at 160 MHz instead of 240 MHz** (suggested by Espressif in the ticket) stopped them: 9 days without a crash, versus at most ~2.5 days at 240 MHz. The firmware now defaults to 160 MHz (`config.json`); face detection, wake word and speech still run fine.
   - To look at a crash: `esptool.py read_flash 0xe00000 0x10000 core.bin`, then `esp-coredump info_corefile -t raw -c core.bin build/xiaozhi.elf` with the ELF of the running build.
 - **The server needs Home Assistant.** The server opens its Home Assistant WebSocket before it answers the robot's `hello`. If Home Assistant is unreachable, the robot shows "Error" and reconnects on its own once Home Assistant is back.
 

@@ -266,10 +266,10 @@ index f36d26a..4803f8f 100644
      virtual bool SetHMirror(bool enabled) override;
      virtual bool SetVFlip(bool enabled) override;
 diff --git a/main/boards/m5stack/core-s3/config.json b/main/boards/m5stack/core-s3/config.json
-index 0180483..82c18d0 100644
+index 0180483..230e7d6 100644
 --- a/main/boards/m5stack/core-s3/config.json
 +++ b/main/boards/m5stack/core-s3/config.json
-@@ -13,8 +13,16 @@
+@@ -13,8 +13,17 @@
                  "CONFIG_SPIRAM_MODE_QUAD=y",
                  "CONFIG_CAMERA_GC0308=y",
                  "CONFIG_CAMERA_GC0308_AUTO_DETECT_DVP_INTERFACE_SENSOR=y",
@@ -282,7 +282,8 @@ index 0180483..82c18d0 100644
 +                "CONFIG_ESP_COREDUMP_DATA_FORMAT_ELF=y",
 +                "CONFIG_ESP_COREDUMP_MAX_TASKS_NUM=16",
 +                "CONFIG_ESP_SYSTEM_PANIC_PRINT_REBOOT=y",
-+                "CONFIG_LWIP_TCPIP_TASK_AFFINITY_CPU0=y"
++                "CONFIG_LWIP_TCPIP_TASK_AFFINITY_CPU0=y",
++                "CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_160=y"
              ]
          }
      ]
@@ -291,10 +292,10 @@ index 0180483..82c18d0 100644
 \ No newline at end of file
 diff --git a/main/boards/m5stack/core-s3/face_tracker.h b/main/boards/m5stack/core-s3/face_tracker.h
 new file mode 100755
-index 0000000..f781421
+index 0000000..8920346
 --- /dev/null
 +++ b/main/boards/m5stack/core-s3/face_tracker.h
-@@ -0,0 +1,123 @@
+@@ -0,0 +1,128 @@
 +// vinci: find the nearest face in the camera and hand it to HeadMotion.
 +//
 +// esp-dl's MSR+MNP face detector (espressif/human_face_detect, model in flash
@@ -314,6 +315,7 @@ index 0000000..f781421
 +#include <algorithm>
 +#include <atomic>
 +
++#include "board.h"
 +#include "esp_video.h"
 +#include "head_motion.h"
 +#include "human_face_detect.hpp"
@@ -381,7 +383,11 @@ index 0000000..f781421
 +            }
 +            int64_t tick = esp_timer_get_time() / 1000;
 +            if (tick - last_rr_log > 30000) {  // repeat: a late-attaching console still sees it
-+                ESP_LOGW(kTag, "last reset reason: %d, up %lld s", (int)esp_reset_reason(), tick / 1000);
++                int level = 0;
++                bool charging = false, discharging = false;
++                Board::GetInstance().GetBatteryLevel(level, charging, discharging);
++                ESP_LOGW(kTag, "last reset reason: %d, up %lld s, battery %d%% charging=%d discharging=%d",
++                         (int)esp_reset_reason(), tick / 1000, level, charging, discharging);
 +                last_rr_log = tick;
 +            }
 +            bool ok = cam_->Peek([&](const uint8_t* p, int w, int h, uint32_t fmt) {

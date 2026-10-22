@@ -52,7 +52,7 @@ Eigene Firmware und ein selbst gehosteter Sprachserver für den **M5Stack StackC
 | `audio/audio_service.cc`, `audio/engines/afe_audio_engine.cc` | Opus-Codec und Wake-Word-AFE fest auf Core 0, damit Core 1 der Gesichtserkennung bleibt (siehe Bekannte Probleme) |
 | `main/CMakeLists.txt` | Nutzt das GIF-Emoji-Set (ersetzt durch die Cyan-Augen) |
 | `idf_component.yml`, `main/CMakeLists.txt` | Fügt `espressif/human_face_detect` hinzu; `espcoredump`, damit Absturzberichte in der Coredump-Partition landen (auswerten mit der passenden `xiaozhi.elf`) |
-| `partitions/v2/16m_vinci.csv`, `config.json` | Größere App-Partitionen (Gesichtsmodell), USB-Serial-Konsole, Coredump in den Flash, lwIP-`tcpip`-Task auf Core 0 |
+| `partitions/v2/16m_vinci.csv`, `config.json` | Größere App-Partitionen (Gesichtsmodell), USB-Serial-Konsole, Coredump in den Flash, lwIP-`tcpip`-Task auf Core 0, Prozessor auf 160 MHz |
 
 ## Einrichtung
 
@@ -197,9 +197,10 @@ Quelle für die Belegung: M5Stacks offizielles [StackChan-BSP](https://github.co
 
 ## Bekannte Probleme
 
-- **Gelegentlicher Neustart in der Gesichtserkennung.** Die esp-dl-TIE728-Kernel (MSR/MNP-Stufe) stürzen ab und zu mit IllegalInstruction, LoadProhibited oder StoreProhibited auf dem Kern ab, der die Erkennung rechnet. Bei Espressif gemeldet als [esp-dl #337](https://github.com/espressif/esp-dl/issues/337); jeder Absturz lag bisher in der TIE728-3x3-Depthwise-Faltung. Der C-Weg von esp-dl für diese Schicht beendete die Abstürze, aber auch jede Erkennung. Der Roboter startet in etwa 10 s neu und macht weiter.
+- **Abstürze der Gesichtserkennung bei 240 MHz (umgangen).** Die esp-dl-TIE728-Kernel (MSR/MNP-Stufe) stürzen ab und zu mit IllegalInstruction, LoadProhibited oder StoreProhibited auf dem Kern ab, der die Erkennung rechnet. Bei Espressif gemeldet als [esp-dl #337](https://github.com/espressif/esp-dl/issues/337); jeder Absturz lag bisher in der TIE728-3x3-Depthwise-Faltung. Der C-Weg von esp-dl für diese Schicht beendete die Abstürze, aber auch jede Erkennung. Der Roboter startet in etwa 10 s neu und macht weiter.
   - Die Pause der Erkennung rund um Server-Neuverbindungen senkte das von etwa alle 10 min auf alle paar Stunden.
   - Ein eigener Kern für die Erkennung (Audio, Display, Kopf und `tcpip` auf Core 0) senkte es weiter; am letzten Wochenende gab es mindestens einen Absturz (wie viele, wurde nicht aufgezeichnet).
+  - **Der Prozessor auf 160 statt 240 MHz** (Vorschlag von Espressif im Ticket) beendete sie: 9 Tage ohne Absturz, bei 240 MHz waren es höchstens etwa 2,5 Tage. Die Firmware läuft jetzt standardmäßig mit 160 MHz (`config.json`); Gesichtserkennung, Wake-Word und Sprache funktionieren weiter.
   - Absturz ansehen: `esptool.py read_flash 0xe00000 0x10000 core.bin`, dann `esp-coredump info_corefile -t raw -c core.bin build/xiaozhi.elf` mit der ELF des laufenden Builds.
 - **Der Server braucht Home Assistant.** Der Server öffnet seine Home-Assistant-WebSocket-Verbindung, bevor er das `hello` des Roboters beantwortet. Ist Home Assistant nicht erreichbar, zeigt der Roboter "Fehler" und verbindet sich von selbst neu, sobald Home Assistant wieder da ist.
 
