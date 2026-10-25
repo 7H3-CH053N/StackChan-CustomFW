@@ -20,3 +20,14 @@
     - action: rest_command.stackchan_say
       data:
         occasion: "In 30 minutes: {{ trigger.calendar_event.summary | replace('\n', ' ') | trim }}"
+
+- alias: StackChan announces that the washing machine finished
+  triggers:
+    - trigger: state
+      entity_id: binary_sensor.washing_machine
+      from: "on"
+      to: "off"
+  actions:
+    - action: rest_command.stackchan_say
+      data:
+        occasion: "The washing machine has finished."
