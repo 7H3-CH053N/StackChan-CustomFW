@@ -20,3 +20,12 @@
     - action: rest_command.stackchan_say
       data:
         occasion: "In 30 minutes: {{ trigger.calendar_event.summary | replace('\n', ' ') | trim }}"
+
+- alias: StackChan says good night
+  triggers:
+    - trigger: time
+      at: "22:00:00"
+  actions:
+    - action: rest_command.stackchan_say
+      data:
+        occasion: "It's 10 PM. Time to wind down and get some rest."
