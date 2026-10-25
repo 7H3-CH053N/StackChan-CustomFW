@@ -20,3 +20,17 @@
     - action: rest_command.stackchan_say
       data:
         occasion: "In 30 minutes: {{ trigger.calendar_event.summary | replace('\n', ' ') | trim }}"
+
+- alias: StackChan warns you when precipitation starts
+  triggers:
+    - trigger: state
+      entity_id: weather.home
+      to:
+        - rainy
+        - pouring
+        - lightning-rainy
+        - snowy-rainy
+  actions:
+    - action: rest_command.stackchan_say
+      data:
+        occasion: "Precipitation is starting. You may want to take an umbrella."
