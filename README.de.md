@@ -1,6 +1,6 @@
 # StackChan Custom Firmware + Server
 
-[English](README.md) | **Deutsch**
+[English](README.md) | **Deutsch** | [日本語](README.ja.md)
 
 Eigene Firmware und ein selbst gehosteter Sprachserver für den **M5Stack StackChan** (CoreS3 mit zwei Feetech-SCS0009-Servos). Ersetzt die Stock-Firmware und die Hersteller-Cloud durch:
 

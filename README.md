@@ -1,6 +1,6 @@
 # StackChan Custom Firmware + Server
 
-**English** | [Deutsch](README.de.md)
+**English** | [Deutsch](README.de.md) | [日本語](README.ja.md)
 
 Custom firmware and a self-hosted voice server for the **M5Stack StackChan** (CoreS3 with two Feetech SCS0009 servos). It replaces the stock firmware and the vendor cloud with:
 
